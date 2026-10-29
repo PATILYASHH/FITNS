@@ -70,17 +70,26 @@ void main() {
     });
 
     test('counts the difference since the last reading', () {
-      expect(stepDelta(previous: 5000, current: 5600, rebootedSince: false), 600);
+      expect(
+        stepDelta(previous: 5000, current: 5600, rebootedSince: false),
+        600,
+      );
     });
 
     test('after a reboot everything on the counter is new', () {
       // Walked past the old total before FITNS looked again — only the boot
       // time can tell this apart from an ordinary increase.
-      expect(stepDelta(previous: 5000, current: 6000, rebootedSince: true), 6000);
+      expect(
+        stepDelta(previous: 5000, current: 6000, rebootedSince: true),
+        6000,
+      );
     });
 
     test('a counter that went down was reset', () {
-      expect(stepDelta(previous: 5000, current: 300, rebootedSince: false), 300);
+      expect(
+        stepDelta(previous: 5000, current: 300, rebootedSince: false),
+        300,
+      );
     });
   });
 }

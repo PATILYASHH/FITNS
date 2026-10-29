@@ -56,22 +56,27 @@ void main() {
     await tracker.stop();
   });
 
-  test('all-day off stops the service but still imports what it logged', () async {
-    final sensor = _FakeSensor([
-      at(100, DateTime(2026, 10, 28, 8)),
-      at(600, DateTime(2026, 10, 28, 9)),
-    ]);
-    final tracker = StepTracker(sensor, db);
-    await tracker.start(allDay: false);
+  test(
+    'all-day off stops the service but still imports what it logged',
+    () async {
+      final sensor = _FakeSensor([
+        at(100, DateTime(2026, 10, 28, 8)),
+        at(600, DateTime(2026, 10, 28, 9)),
+      ]);
+      final tracker = StepTracker(sensor, db);
+      await tracker.start(allDay: false);
 
-    expect(sensor.background, isFalse);
-    expect(await db.watchStepsOn(DateTime(2026, 10, 28)).first, 500);
-    await tracker.stop();
-  });
+      expect(sensor.background, isFalse);
+      expect(await db.watchStepsOn(DateTime(2026, 10, 28)).first, 500);
+      await tracker.stop();
+    },
+  );
 
   test('live readings keep counting after the import', () async {
     final today = DateTime.now();
-    final sensor = _FakeSensor([at(1000, today.subtract(const Duration(minutes: 1)))]);
+    final sensor = _FakeSensor([
+      at(1000, today.subtract(const Duration(minutes: 1))),
+    ]);
     final tracker = StepTracker(sensor, db);
     await tracker.start(allDay: true);
 

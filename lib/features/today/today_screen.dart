@@ -123,11 +123,8 @@ class _WorkoutSection extends ConsumerWidget {
                       ActionChip(
                         avatar: const Icon(Icons.play_arrow_rounded, size: 18),
                         label: Text(r.routine.name),
-                        onPressed: () => startWorkout(
-                          context,
-                          ref,
-                          routineId: r.routine.id,
-                        ),
+                        onPressed: () =>
+                            startWorkout(context, ref, routineId: r.routine.id),
                       ),
                   ],
                 ),

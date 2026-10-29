@@ -51,7 +51,9 @@ class StepsCard extends ConsumerWidget {
     final status = ref.watch(stepStatusProvider);
     final steps = ref.watch(todayStepsProvider).valueOrNull ?? 0;
     final goal =
-        ref.watch(settingsProvider.select((s) => s.valueOrNull?.dailyStepGoal)) ??
+        ref.watch(
+          settingsProvider.select((s) => s.valueOrNull?.dailyStepGoal),
+        ) ??
         8000;
     final week = ref.watch(weekStepsProvider).valueOrNull;
     final allDay =

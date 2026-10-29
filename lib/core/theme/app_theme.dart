@@ -114,7 +114,9 @@ class AppTheme {
 
     return base.copyWith(
       textTheme: text.copyWith(
-        headlineLarge: text.headlineLarge?.copyWith(fontWeight: FontWeight.w700),
+        headlineLarge: text.headlineLarge?.copyWith(
+          fontWeight: FontWeight.w700,
+        ),
         headlineMedium: text.headlineMedium?.copyWith(
           fontWeight: FontWeight.w700,
         ),
@@ -182,7 +184,10 @@ class AppTheme {
           borderRadius: BorderRadius.circular(14),
           borderSide: BorderSide(color: p.accent, width: 1.5),
         ),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 14,
+          vertical: 14,
+        ),
       ),
       chipTheme: ChipThemeData(
         backgroundColor: p.surfaceHigh,
@@ -233,7 +238,9 @@ class AppTheme {
           borderRadius: BorderRadius.circular(cardRadius),
         ),
       ),
-      snackBarTheme: const SnackBarThemeData(behavior: SnackBarBehavior.floating),
+      snackBarTheme: const SnackBarThemeData(
+        behavior: SnackBarBehavior.floating,
+      ),
     );
   }
 }

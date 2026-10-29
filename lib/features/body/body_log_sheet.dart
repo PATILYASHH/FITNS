@@ -61,9 +61,11 @@ class _BodyLogSheetState extends ConsumerState<_BodyLogSheet> {
         values[metric] = value;
       }
     }
-    setState(() => _errors
-      ..clear()
-      ..addAll(errors));
+    setState(
+      () => _errors
+        ..clear()
+        ..addAll(errors),
+    );
     if (errors.isNotEmpty) return;
     if (values.isEmpty) {
       ScaffoldMessenger.of(context)

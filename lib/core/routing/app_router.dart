@@ -59,13 +59,11 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         path: '/workout/:id/log',
-        builder: (_, state) =>
-            ActiveWorkoutScreen(workoutId: _id(state, 'id')),
+        builder: (_, state) => ActiveWorkoutScreen(workoutId: _id(state, 'id')),
       ),
       GoRoute(
         path: '/workout/:id',
-        builder: (_, state) =>
-            WorkoutDetailScreen(workoutId: _id(state, 'id')),
+        builder: (_, state) => WorkoutDetailScreen(workoutId: _id(state, 'id')),
       ),
       GoRoute(
         path: '/routine/new',
@@ -73,8 +71,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         path: '/routine/:id',
-        builder: (_, state) =>
-            RoutineEditorScreen(routineId: _id(state, 'id')),
+        builder: (_, state) => RoutineEditorScreen(routineId: _id(state, 'id')),
       ),
       GoRoute(
         path: '/exercises/pick',

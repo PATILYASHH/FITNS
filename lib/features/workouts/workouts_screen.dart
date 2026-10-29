@@ -49,7 +49,8 @@ class WorkoutsScreen extends ConsumerWidget {
           SectionCard(
             child: EmptyHint(
               icon: Icons.playlist_add,
-              message: 'Save the workouts you repeat as routines, and start '
+              message:
+                  'Save the workouts you repeat as routines, and start '
                   'them in one tap.',
               action: OutlinedButton(
                 onPressed: () => context.push('/routine/new'),
@@ -116,11 +117,8 @@ class _RoutineCard extends ConsumerWidget {
             tooltip: 'Start ${routine.routine.name}',
             onPressed: routine.items.isEmpty
                 ? null
-                : () => startWorkout(
-                    context,
-                    ref,
-                    routineId: routine.routine.id,
-                  ),
+                : () =>
+                      startWorkout(context, ref, routineId: routine.routine.id),
             icon: const Icon(Icons.play_arrow_rounded),
           ),
         ],

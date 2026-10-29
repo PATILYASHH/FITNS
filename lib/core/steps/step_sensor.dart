@@ -73,7 +73,9 @@ class StepSensor {
         for (final row in rows.cast<List<Object?>>())
           StepReading(
             counter: (row[0]! as num).toInt(),
-            readAt: DateTime.fromMillisecondsSinceEpoch((row[1]! as num).toInt()),
+            readAt: DateTime.fromMillisecondsSinceEpoch(
+              (row[1]! as num).toInt(),
+            ),
             bootTime: DateTime.fromMillisecondsSinceEpoch(
               (row[2]! as num).toInt(),
             ),

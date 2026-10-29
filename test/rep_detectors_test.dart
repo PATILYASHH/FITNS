@@ -95,11 +95,21 @@ void main() {
     });
 
     test('a hard stomp without leaving the ground does not count', () {
-      expect(_count(JumpDetector(), _accel([(1.0, 300), (3.0, 40), (1.0, 300)])), 0);
+      expect(
+        _count(JumpDetector(), _accel([(1.0, 300), (3.0, 40), (1.0, 300)])),
+        0,
+      );
     });
 
     test('a bounce right after landing is the same jump', () {
-      final bounce = [(1.0, 300), (0.1, 150), (2.6, 40), (0.3, 30), (2.0, 30), (1.0, 300)];
+      final bounce = [
+        (1.0, 300),
+        (0.1, 150),
+        (2.6, 40),
+        (0.3, 30),
+        (2.0, 30),
+        (1.0, 300),
+      ];
       expect(_count(JumpDetector(), _accel(bounce)), 1);
     });
   });

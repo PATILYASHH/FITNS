@@ -40,23 +40,22 @@ class RepProfile {
 /// Left out on purpose: pull-ups and dips (the pocket doesn't rotate, and
 /// vertical travel alone is too easy to fake by fidgeting), curls (needs an
 /// armband), lunges (only the pocket leg's reps would count).
-RepProfile? repProfileFor(ExerciseRow exercise) =>
-    switch (exercise.seedKey) {
-      'push_up' => _pushUps,
-      'bodyweight_squat' ||
-      'goblet_squat' ||
-      'squat_bb' ||
-      'front_squat_bb' ||
-      'bulgarian_split_squat' => _squats,
-      'hanging_leg_raise' => _legRaises,
-      'sit_up' => _sitUps,
-      'crunch' => _crunches,
-      'jumping_jacks' => _jumpingJacks,
-      'jump_rope' => _jumpRope,
-      'burpee' => _burpees,
-      'jump_squat' => _jumpSquats,
-      _ => null,
-    };
+RepProfile? repProfileFor(ExerciseRow exercise) => switch (exercise.seedKey) {
+  'push_up' => _pushUps,
+  'bodyweight_squat' ||
+  'goblet_squat' ||
+  'squat_bb' ||
+  'front_squat_bb' ||
+  'bulgarian_split_squat' => _squats,
+  'hanging_leg_raise' => _legRaises,
+  'sit_up' => _sitUps,
+  'crunch' => _crunches,
+  'jumping_jacks' => _jumpingJacks,
+  'jump_rope' => _jumpRope,
+  'burpee' => _burpees,
+  'jump_squat' => _jumpSquats,
+  _ => null,
+};
 
 final _pushUps = RepProfile(
   sensor: MotionSensorKind.proximity,

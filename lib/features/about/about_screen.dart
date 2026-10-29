@@ -35,7 +35,8 @@ class AboutScreen extends StatelessWidget {
                 const SizedBox(height: 16),
                 const StatTile(
                   label: 'Family',
-                  value: 'A ${AppInfo.studio} app, alongside '
+                  value:
+                      'A ${AppInfo.studio} app, alongside '
                       '${AppInfo.siblingApp}',
                 ),
                 const SizedBox(height: 16),
