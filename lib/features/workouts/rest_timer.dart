@@ -1,5 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../core/notifications/rest_alerts.dart';
+import '../../data/providers.dart';
 
 @immutable
 class RestTimerState {
@@ -22,19 +28,31 @@ class RestTimerState {
   }
 }
 
-/// The rest between sets. App-wide rather than per screen, so leaving the
-/// workout screen and coming back doesn't lose it.
+/// The rest between sets. App-wide rather than per screen, so it keeps
+/// running — and still buzzes at the end — wherever the user is in the app.
+/// [RestAlerts] covers the phone being locked or FITNS being in the
+/// background.
 class RestTimerController extends StateNotifier<RestTimerState?> {
-  RestTimerController({DateTime Function()? clock})
-    : _clock = clock ?? DateTime.now,
-      super(null);
+  RestTimerController({
+    DateTime Function()? clock,
+    RestAlerts? alerts,
+    VoidCallback? onFinished,
+  }) : _clock = clock ?? DateTime.now,
+       _alerts = alerts,
+       _onFinished = onFinished,
+       super(null);
 
   final DateTime Function() _clock;
+  final RestAlerts? _alerts;
+  final VoidCallback? _onFinished;
+  Timer? _timer;
 
   void start(Duration duration) {
-    state = duration <= Duration.zero
-        ? null
-        : RestTimerState(endsAt: _clock().add(duration), total: duration);
+    if (duration <= Duration.zero) {
+      stop();
+      return;
+    }
+    _run(RestTimerState(endsAt: _clock().add(duration), total: duration));
   }
 
   /// ±15 s buttons. Taking it to zero or below ends it.
@@ -43,16 +61,45 @@ class RestTimerController extends StateNotifier<RestTimerState?> {
     if (current == null) return;
     final endsAt = current.endsAt.add(by);
     if (!endsAt.isAfter(_clock())) {
-      state = null;
+      stop();
       return;
     }
-    state = RestTimerState(endsAt: endsAt, total: current.total + by);
+    _run(RestTimerState(endsAt: endsAt, total: current.total + by));
   }
 
-  void stop() => state = null;
+  void stop() {
+    _timer?.cancel();
+    _timer = null;
+    state = null;
+    _alerts?.cancel();
+  }
+
+  void _run(RestTimerState next) {
+    _timer?.cancel();
+    state = next;
+    _timer = Timer(next.endsAt.difference(_clock()), _finish);
+    _alerts?.schedule(next.endsAt);
+  }
+
+  /// Rest is over. The system alert is left alone: if FITNS is in front it
+  /// shows nothing anyway, and if it isn't, it is the one that has to buzz.
+  void _finish() {
+    _timer = null;
+    state = null;
+    _onFinished?.call();
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
 }
 
 final restTimerProvider =
     StateNotifierProvider<RestTimerController, RestTimerState?>(
-      (ref) => RestTimerController(),
+      (ref) => RestTimerController(
+        alerts: ref.watch(restAlertsProvider),
+        onFinished: HapticFeedback.vibrate,
+      ),
     );

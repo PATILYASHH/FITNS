@@ -56,6 +56,30 @@ enum ExerciseKind {
   final String label;
 }
 
+/// The picture an exercise shows — by kind of movement, since no icon set
+/// draws individual exercises. Built-ins get theirs from
+/// `features/exercises/exercise_icons.dart`; a custom exercise stores the one
+/// the user picked in [Exercises.icon].
+enum ExerciseIcon {
+  weights('Weights'),
+  bodyweight('Bodyweight'),
+  core('Core'),
+  hold('Hold'),
+  jump('Jumps'),
+  run('Run'),
+  walk('Walk'),
+  bike('Bike'),
+  row('Row'),
+  swim('Swim'),
+  hike('Hike'),
+  stretch('Stretch'),
+  combat('Combat'),
+  sport('Sport');
+
+  const ExerciseIcon(this.label);
+  final String label;
+}
+
 /// The three kinds of number a body entry can hold. Each is stored as an
 /// integer in its own base unit so nothing is ever a float on disk.
 enum BodyQuantity {
@@ -126,6 +150,11 @@ class Exercises extends Table {
   TextColumn get muscle => textEnum<MuscleGroup>()();
   TextColumn get equipment => textEnum<Equipment>()();
   TextColumn get kind => textEnum<ExerciseKind>()();
+
+  /// The user's pick for a custom exercise. Null → derived (built-ins always
+  /// are, so a better icon in an app update reaches existing installs).
+  /// Schema v3.
+  TextColumn get icon => textEnum<ExerciseIcon>().nullable()();
 
   /// Identifies a built-in exercise across app updates, so re-seeding can add
   /// new ones without duplicating old ones. Null for the user's own.

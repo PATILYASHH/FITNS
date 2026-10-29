@@ -7,6 +7,7 @@ import '../../core/dates.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_page.dart';
 import '../../data/providers.dart';
+import '../exercises/exercise_icons.dart';
 import 'set_format.dart';
 
 /// A finished workout, read-only.
@@ -40,6 +41,12 @@ class WorkoutDetailScreen extends ConsumerWidget {
       appBar: AppBar(
         title: Text(w.name),
         actions: [
+          if (!inProgress)
+            IconButton(
+              tooltip: 'Edit workout',
+              icon: const Icon(Icons.edit_outlined),
+              onPressed: () => context.push('/workout/${w.id}/log'),
+            ),
           if (!inProgress)
             IconButton(
               tooltip: 'Delete workout',
@@ -81,7 +88,9 @@ class WorkoutDetailScreen extends ConsumerWidget {
                         label: 'Duration',
                         value: inProgress
                             ? 'Running'
-                            : formatDuration(w.endedAt!.difference(w.startedAt)),
+                            : formatDuration(
+                                w.endedAt!.difference(w.startedAt),
+                              ),
                       ),
                     ),
                     Expanded(
@@ -108,39 +117,54 @@ class WorkoutDetailScreen extends ConsumerWidget {
               ],
             ),
           ),
-          for (final entry in detail.entries) ...[
-            const SizedBox(height: 12),
-            SectionCard(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(entry.exercise.name, style: theme.textTheme.titleMedium),
-                  const SizedBox(height: 8),
-                  for (final (i, set) in entry.sets.indexed)
-                    Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 3),
-                      child: Row(
-                        children: [
-                          SizedBox(
-                            width: 28,
-                            child: Text(
-                              '${i + 1}',
-                              style: theme.textTheme.bodyMedium?.copyWith(
-                                color: theme.muted,
+          // An edit in progress may hold sets not yet saved; history shows
+          // only what was done.
+          for (final entry in detail.entries)
+            if (entry.sets.any((s) => s.done)) ...[
+              const SizedBox(height: 12),
+              SectionCard(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        ExerciseAvatar(entry.exercise, size: 32),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            entry.exercise.name,
+                            style: theme.textTheme.titleMedium,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    for (final (i, set)
+                        in entry.sets.where((s) => s.done).indexed)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 3),
+                        child: Row(
+                          children: [
+                            SizedBox(
+                              width: 28,
+                              child: Text(
+                                '${i + 1}',
+                                style: theme.textTheme.bodyMedium?.copyWith(
+                                  color: theme.muted,
+                                ),
                               ),
                             ),
-                          ),
-                          Text(
-                            formatSet(set, entry.exercise.kind, units),
-                            style: theme.textTheme.bodyLarge,
-                          ),
-                        ],
+                            Text(
+                              formatSet(set, entry.exercise.kind, units),
+                              style: theme.textTheme.bodyLarge,
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
-                ],
+                  ],
+                ),
               ),
-            ),
-          ],
+            ],
         ],
       ),
     );

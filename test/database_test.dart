@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:drift/drift.dart' hide isNull, isNotNull;
 import 'package:drift/native.dart';
 import 'package:fitns/data/database.dart';
@@ -18,10 +20,42 @@ void main() {
   test('the exercise library is seeded once, with unique keys', () async {
     final all = await db.watchExercises().first;
     expect(all, hasLength(seedExercises.length));
-    expect(seedExercises.map((e) => e.key).toSet(), hasLength(seedExercises.length));
+    expect(
+      seedExercises.map((e) => e.key).toSet(),
+      hasLength(seedExercises.length),
+    );
 
     await db.seedExerciseLibrary(); // as an app update would
     expect(await db.watchExercises().first, hasLength(seedExercises.length));
+  });
+
+  test('a 0.0.1 database (schema 2) upgrades without losing data', () async {
+    final dir = Directory.systemTemp.createTempSync('fitns_migration');
+    addTearDown(() => dir.deleteSync(recursive: true));
+    final file = File('${dir.path}/fitns.db');
+
+    // Make a current database, then turn it back into what 0.0.1 wrote.
+    var old = AppDatabase(NativeDatabase(file));
+    await old.addBodyEntries(DateTime(2026, 10, 28), {
+      BodyMetric.weight: 72500,
+    });
+    await old.customStatement('ALTER TABLE exercises DROP COLUMN icon');
+    await old.customStatement('PRAGMA user_version = 2');
+    await old.close();
+
+    final upgraded = AppDatabase(NativeDatabase(file));
+    addTearDown(upgraded.close);
+    final exercises = await upgraded.watchExercises().first;
+    expect(exercises, hasLength(seedExercises.length));
+    expect(exercises.every((e) => e.icon == null), isTrue);
+    expect((await upgraded.watchBodyEntries().first).single.value, 72500);
+    await upgraded.addCustomExercise(
+      name: 'New',
+      muscle: MuscleGroup.core,
+      equipment: Equipment.other,
+      kind: ExerciseKind.reps,
+      icon: ExerciseIcon.core,
+    );
   });
 
   test('settings are created with defaults on first read', () async {
@@ -42,23 +76,36 @@ void main() {
       routineId = await db.saveRoutine(
         name: 'Push',
         items: [
-          (exerciseId: bench.id, targetSets: 3, targetReps: 8, restSeconds: 120),
-          (exerciseId: plank.id, targetSets: 2, targetReps: null, restSeconds: null),
+          (
+            exerciseId: bench.id,
+            targetSets: 3,
+            targetReps: 8,
+            restSeconds: 120,
+          ),
+          (
+            exerciseId: plank.id,
+            targetSets: 2,
+            targetReps: null,
+            restSeconds: null,
+          ),
         ],
       );
     });
 
-    test('starting from a routine copies its exercises and empty sets', () async {
-      final id = await db.startWorkout(routineId: routineId);
-      final w = await detail(id);
-      expect(w.workout.name, 'Push');
-      expect(w.entries.map((e) => e.exercise.name), [bench.name, plank.name]);
-      expect(w.entries[0].sets, hasLength(3));
-      expect(w.entries[0].item.targetReps, 8);
-      expect(w.entries[0].item.restSeconds, 120);
-      expect(w.entries[1].sets, hasLength(2));
-      expect(w.entries.expand((e) => e.sets).every((s) => !s.done), isTrue);
-    });
+    test(
+      'starting from a routine copies its exercises and empty sets',
+      () async {
+        final id = await db.startWorkout(routineId: routineId);
+        final w = await detail(id);
+        expect(w.workout.name, 'Push');
+        expect(w.entries.map((e) => e.exercise.name), [bench.name, plank.name]);
+        expect(w.entries[0].sets, hasLength(3));
+        expect(w.entries[0].item.targetReps, 8);
+        expect(w.entries[0].item.restSeconds, 120);
+        expect(w.entries[1].sets, hasLength(2));
+        expect(w.entries.expand((e) => e.sets).every((s) => !s.done), isTrue);
+      },
+    );
 
     test('only one workout can be in progress', () async {
       final first = await db.startWorkout();
@@ -91,7 +138,10 @@ void main() {
       for (final s in sets.take(2)) {
         await db.updateSet(
           s.id,
-          const WorkoutSetsCompanion(reps: Value(10), weightGrams: Value(50000)),
+          const WorkoutSetsCompanion(
+            reps: Value(10),
+            weightGrams: Value(50000),
+          ),
         );
         await db.setDone(s.id, done: true);
       }
@@ -120,21 +170,24 @@ void main() {
       expect(previous.single.reps, 5);
     });
 
-    test('an exercise added to a workout gets last time\'s set count', () async {
-      final first = await db.startWorkout();
-      await db.addExercisesToWorkout(first, [bench.id]);
-      final item = (await detail(first)).entries.single;
-      await db.addSet(item.item.id);
-      await db.addSet(item.item.id);
-      for (final s in (await detail(first)).entries.single.sets) {
-        await db.setDone(s.id, done: true);
-      }
-      await db.finishWorkout(first);
+    test(
+      'an exercise added to a workout gets last time\'s set count',
+      () async {
+        final first = await db.startWorkout();
+        await db.addExercisesToWorkout(first, [bench.id]);
+        final item = (await detail(first)).entries.single;
+        await db.addSet(item.item.id);
+        await db.addSet(item.item.id);
+        for (final s in (await detail(first)).entries.single.sets) {
+          await db.setDone(s.id, done: true);
+        }
+        await db.finishWorkout(first);
 
-      final second = await db.startWorkout();
-      await db.addExercisesToWorkout(second, [bench.id]);
-      expect((await detail(second)).entries.single.sets, hasLength(3));
-    });
+        final second = await db.startWorkout();
+        await db.addExercisesToWorkout(second, [bench.id]);
+        expect((await detail(second)).entries.single.sets, hasLength(3));
+      },
+    );
 
     test('a sensor-counted set fills the next unticked set', () async {
       final id = await db.startWorkout(routineId: routineId);
@@ -143,28 +196,93 @@ void main() {
       await db.completeNextSet(item.item.id, reps: 10);
 
       final sets = (await detail(id)).entries[0].sets;
-      expect([for (final s in sets) (s.done, s.reps)], [
-        (true, 12),
-        (true, 10),
-        (false, null),
-      ]);
+      expect(
+        [for (final s in sets) (s.done, s.reps)],
+        [(true, 12), (true, 10), (false, null)],
+      );
     });
 
-    test('a sensor-counted set past the plan adds one, keeping the weight', () async {
-      final id = await db.startWorkout();
-      await db.addExercisesToWorkout(id, [bench.id]);
-      final item = (await detail(id)).entries.single.item;
-      final first = (await detail(id)).entries.single.sets.single;
-      await db.updateSet(
-        first.id,
-        const WorkoutSetsCompanion(weightGrams: Value(40000)),
-      );
-      await db.completeNextSet(item.id, reps: 8);
-      await db.completeNextSet(item.id, reps: 7);
+    test(
+      'a sensor-counted set past the plan adds one, keeping the weight',
+      () async {
+        final id = await db.startWorkout();
+        await db.addExercisesToWorkout(id, [bench.id]);
+        final item = (await detail(id)).entries.single.item;
+        final first = (await detail(id)).entries.single.sets.single;
+        await db.updateSet(
+          first.id,
+          const WorkoutSetsCompanion(weightGrams: Value(40000)),
+        );
+        await db.completeNextSet(item.id, reps: 8);
+        await db.completeNextSet(item.id, reps: 7);
 
-      final sets = (await detail(id)).entries.single.sets;
-      expect(sets, hasLength(2));
-      expect(sets.every((s) => s.done && s.weightGrams == 40000), isTrue);
+        final sets = (await detail(id)).entries.single.sets;
+        expect(sets, hasLength(2));
+        expect(sets.every((s) => s.done && s.weightGrams == 40000), isTrue);
+      },
+    );
+
+    group('editing a finished workout', () {
+      Future<int> finished({required DateTime start}) async {
+        final id = await db.startWorkout(routineId: routineId, now: start);
+        final sets = (await detail(id)).entries[0].sets;
+        await db.updateSet(
+          sets[0].id,
+          const WorkoutSetsCompanion(reps: Value(5), weightGrams: Value(80000)),
+        );
+        await db.setDone(sets[0].id, done: true);
+        await db.finishWorkout(id, now: start.add(const Duration(hours: 1)));
+        return id;
+      }
+
+      test(
+        'keeps sets with a value, drops empty ones and empty exercises',
+        () async {
+          final id = await finished(start: DateTime(2026, 10, 27, 18));
+          final item = (await detail(id)).entries.single.item;
+          final typed = await db.addSet(item.id);
+          await db.updateSet(typed, const WorkoutSetsCompanion(reps: Value(3)));
+          await db.addSet(item.id); // left empty
+          await db.addExercisesToWorkout(id, [plank.id]); // nothing typed
+
+          await db.saveEditedWorkout(id);
+
+          final w = await detail(id);
+          expect(w.entries, hasLength(1));
+          expect(
+            [for (final s in w.entries.single.sets) (s.reps, s.done)],
+            [(5, true), (3, true)],
+          );
+        },
+      );
+
+      test('moving it keeps its length', () async {
+        final id = await finished(start: DateTime(2026, 10, 27, 18));
+        await db.moveWorkout(id, DateTime(2026, 10, 25, 7, 30));
+        final w = (await detail(id)).workout;
+        expect(w.startedAt, DateTime(2026, 10, 25, 7, 30));
+        expect(w.endedAt, DateTime(2026, 10, 25, 8, 30));
+      });
+
+      test('"previous" only looks at earlier workouts', () async {
+        final first = await finished(start: DateTime(2026, 10, 20, 18));
+        final second = await finished(start: DateTime(2026, 10, 27, 18));
+        final firstSetId = (await detail(first)).entries.single.sets.single.id;
+        await db.updateSet(
+          firstSetId,
+          const WorkoutSetsCompanion(reps: Value(4)),
+        );
+
+        final previous = await db.previousSets(
+          bench.id,
+          beforeWorkoutId: second,
+        );
+        expect(previous.single.reps, 4); // the first workout, not itself
+        expect(
+          await db.previousSets(bench.id, beforeWorkoutId: first),
+          isEmpty,
+        );
+      });
     });
 
     test('deleting a workout cascades to its exercises and sets', () async {
@@ -230,12 +348,28 @@ void main() {
       // Live reading at 10:05, then the background log replays 10:00 — whose
       // lower counter would otherwise look like a reboot.
       final day = DateTime(2026, 10, 28);
-      await db.recordStepCounter(counter: 1000, bootTime: boot, now: day.add(const Duration(hours: 9)));
-      await db.recordStepCounter(counter: 5000, bootTime: boot, now: day.add(const Duration(hours: 10, minutes: 5)));
-      await db.recordStepCounter(counter: 4900, bootTime: boot, now: day.add(const Duration(hours: 10)));
+      await db.recordStepCounter(
+        counter: 1000,
+        bootTime: boot,
+        now: day.add(const Duration(hours: 9)),
+      );
+      await db.recordStepCounter(
+        counter: 5000,
+        bootTime: boot,
+        now: day.add(const Duration(hours: 10, minutes: 5)),
+      );
+      await db.recordStepCounter(
+        counter: 4900,
+        bootTime: boot,
+        now: day.add(const Duration(hours: 10)),
+      );
       expect(await db.watchStepsOn(day).first, 4000);
 
-      await db.recordStepCounter(counter: 5200, bootTime: boot, now: day.add(const Duration(hours: 11)));
+      await db.recordStepCounter(
+        counter: 5200,
+        bootTime: boot,
+        now: day.add(const Duration(hours: 11)),
+      );
       expect(await db.watchStepsOn(day).first, 4200);
     });
 
@@ -254,7 +388,10 @@ void main() {
 
   test('body entries in one log share a time and delete together', () async {
     final at = DateTime(2026, 10, 28, 7);
-    await db.addBodyEntries(at, {BodyMetric.weight: 72500, BodyMetric.waist: 815});
+    await db.addBodyEntries(at, {
+      BodyMetric.weight: 72500,
+      BodyMetric.waist: 815,
+    });
     expect(await db.watchBodyEntries().first, hasLength(2));
     await db.deleteBodyLog(at);
     expect(await db.watchBodyEntries().first, isEmpty);

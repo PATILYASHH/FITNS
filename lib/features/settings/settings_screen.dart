@@ -5,11 +5,13 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../core/branding/app_info.dart';
+import '../../core/notifications/rest_alerts.dart';
 import '../../core/steps/step_sensor.dart';
 import '../../core/units.dart';
 import '../../core/widgets/app_page.dart';
 import '../../data/database.dart';
 import '../../data/providers.dart';
+import '../backup/backup_actions.dart';
 import '../steps/steps_card.dart';
 import '../workouts/set_format.dart';
 import 'settings_dialogs.dart';
@@ -87,7 +89,8 @@ class SettingsScreen extends ConsumerWidget {
                 subtitle: Text(switch (stepStatus) {
                   StepSensorStatus.granted => 'On',
                   StepSensorStatus.denied => 'Off — needs permission',
-                  StepSensorStatus.unavailable => 'No step counter on this phone',
+                  StepSensorStatus.unavailable =>
+                    'No step counter on this phone',
                   null => 'Checking…',
                 }),
                 trailing: stepStatus == StepSensorStatus.denied
@@ -111,6 +114,7 @@ class SettingsScreen extends ConsumerWidget {
                     await syncStepTracking(ref);
                   },
                 ),
+              _RestAlertTile(),
               ListTile(
                 leading: const Icon(Icons.timer_outlined),
                 title: const Text('Rest between sets'),
@@ -144,6 +148,28 @@ class SettingsScreen extends ConsumerWidget {
             ],
           ),
         ),
+        const SectionLabel('Your data'),
+        Card(
+          child: Column(
+            children: [
+              ListTile(
+                leading: const Icon(Icons.save_alt),
+                title: const Text('Back up'),
+                subtitle: const Text(
+                  'Save everything to one file — keep it somewhere off this '
+                  'phone.',
+                ),
+                onTap: () => exportBackup(context, ref),
+              ),
+              ListTile(
+                leading: const Icon(Icons.settings_backup_restore),
+                title: const Text('Restore'),
+                subtitle: const Text('Replace everything with a backup file.'),
+                onTap: () => restoreBackup(context, ref),
+              ),
+            ],
+          ),
+        ),
         const SectionLabel('Appearance'),
         SegmentedButton<ThemeMode>(
           showSelectedIcon: false,
@@ -166,6 +192,44 @@ class SettingsScreen extends ConsumerWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// Whether "Rest over" can reach a locked phone, and the fix if it can't.
+class _RestAlertTile extends ConsumerWidget {
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final status =
+        ref.watch(restAlertStatusProvider).valueOrNull ??
+        RestAlertStatus.unknown;
+    final alerts = ref.read(restAlertsProvider);
+
+    final (String subtitle, VoidCallback? fix) = !status.notifications
+        ? (
+            'Off — FITNS may not show notifications',
+            () async {
+              // Once refused, only system settings can turn it back on.
+              if (!await alerts.requestNotifications()) {
+                await ref.read(stepSensorProvider).openSettings();
+              }
+              ref.invalidate(restAlertStatusProvider);
+            },
+          )
+        : !status.onTime
+        ? (
+            'May arrive late — allow "Alarms & reminders" for FITNS',
+            alerts.openAlarmSettings,
+          )
+        : ('On — buzzes when rest is over, even with the screen off', null);
+
+    return ListTile(
+      leading: const Icon(Icons.notifications_active_outlined),
+      title: const Text('Rest timer alerts'),
+      subtitle: Text(subtitle),
+      trailing: fix == null
+          ? null
+          : TextButton(onPressed: fix, child: const Text('Fix')),
     );
   }
 }

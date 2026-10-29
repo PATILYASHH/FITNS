@@ -7,6 +7,7 @@ import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_page.dart';
 import '../../data/database.dart';
 import '../../data/providers.dart';
+import '../exercises/exercise_icons.dart';
 import '../workouts/set_format.dart';
 
 /// One exercise line while the routine is being edited.
@@ -78,7 +79,8 @@ class _RoutineEditorScreenState extends ConsumerState<RoutineEditorScreen> {
     final ids = await context.push<List<int>>('/exercises/pick');
     if (ids == null || ids.isEmpty || !mounted) return;
     final byId = {
-      for (final e in ref.read(exercisesProvider).valueOrNull ?? const <ExerciseRow>[])
+      for (final e
+          in ref.read(exercisesProvider).valueOrNull ?? const <ExerciseRow>[])
         e.id: e,
     };
     setState(() {
@@ -280,6 +282,8 @@ class _ItemCardState extends State<_ItemCard> {
                     child: Icon(Icons.drag_indicator, color: theme.muted),
                   ),
                 ),
+                ExerciseAvatar(item.exercise, size: 32),
+                const SizedBox(width: 12),
                 Expanded(
                   child: Text(
                     item.exercise.name,
@@ -311,7 +315,10 @@ class _ItemCardState extends State<_ItemCard> {
                                 : null,
                             icon: const Icon(Icons.remove),
                           ),
-                          Text('${item.sets}', style: theme.textTheme.titleMedium),
+                          Text(
+                            '${item.sets}',
+                            style: theme.textTheme.titleMedium,
+                          ),
                           IconButton(
                             visualDensity: VisualDensity.compact,
                             onPressed: item.sets < 20
@@ -362,7 +369,10 @@ class _ItemCardState extends State<_ItemCard> {
                           ),
                         ),
                         for (final s in restChoices)
-                          DropdownMenuItem(value: s, child: Text(formatRest(s))),
+                          DropdownMenuItem(
+                            value: s,
+                            child: Text(formatRest(s)),
+                          ),
                       ],
                       onChanged: (v) {
                         item.rest = v;

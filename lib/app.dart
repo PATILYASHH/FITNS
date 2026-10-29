@@ -38,8 +38,9 @@ class _FitnsAppState extends ConsumerState<FitnsApp>
     if (ref.read(todayProvider) != today) {
       ref.read(todayProvider.notifier).state = today;
     }
-    // The permission may have been granted or revoked in system settings.
+    // Permissions may have been granted or revoked in system settings.
     _startSteps();
+    ref.invalidate(restAlertStatusProvider);
   }
 
   Future<void> _startSteps() async {

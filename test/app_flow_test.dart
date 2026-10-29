@@ -1,9 +1,11 @@
 import 'dart:async';
 
+import 'package:drift/drift.dart' show Value;
 import 'package:drift/native.dart';
 import 'package:fitns/app.dart';
 import 'package:fitns/core/motion/motion_sensors.dart';
 import 'package:fitns/core/motion/rep_detectors.dart';
+import 'package:fitns/core/platform/document_files.dart';
 import 'package:fitns/core/steps/step_sensor.dart';
 import 'package:fitns/data/database.dart';
 import 'package:fitns/data/providers.dart';
@@ -33,6 +35,26 @@ class FakeStepSensor extends StepSensor {
 }
 
 /// Sensors the test drives by hand.
+/// Android's file pickers, replaced by one remembered file.
+class FakeDocumentFiles extends DocumentFiles {
+  String? saved;
+  String? savedName;
+
+  @override
+  Future<bool> saveText({
+    required String name,
+    required String content,
+    String mime = 'application/json',
+  }) async {
+    savedName = name;
+    saved = content;
+    return true;
+  }
+
+  @override
+  Future<String?> openText() async => saved;
+}
+
 class FakeMotionSensors extends MotionSensors {
   final samples$ = StreamController<MotionSample>.broadcast();
   bool screenOn = false;
@@ -71,6 +93,7 @@ void main() {
     WidgetTester tester, {
     StepSensorStatus steps = StepSensorStatus.granted,
     MotionSensors motion = const MotionSensors(),
+    DocumentFiles files = const DocumentFiles(),
     Future<void> Function(AppDatabase db)? seed,
   }) async {
     // A typical phone: 360 × 780 dp.
@@ -87,6 +110,7 @@ void main() {
           dbProvider.overrideWithValue(db),
           stepSensorProvider.overrideWithValue(FakeStepSensor(steps)),
           motionSensorsProvider.overrideWithValue(motion),
+          documentFilesProvider.overrideWithValue(files),
         ],
         child: const FitnsApp(),
       ),
@@ -136,15 +160,20 @@ void main() {
   ) async {
     final db = await pumpApp(tester);
     final squat = await tester.runAsync(
-      () => (db.select(db.exercises)
-            ..where((e) => e.name.equals('Squat (Barbell)')))
-          .getSingle(),
+      () => (db.select(
+        db.exercises,
+      )..where((e) => e.name.equals('Squat (Barbell)'))).getSingle(),
     );
     await tester.runAsync(
       () => db.saveRoutine(
         name: 'Legs',
         items: [
-          (exerciseId: squat!.id, targetSets: 4, targetReps: 5, restSeconds: 180),
+          (
+            exerciseId: squat!.id,
+            targetSets: 4,
+            targetReps: 5,
+            restSeconds: 180,
+          ),
         ],
       ),
     );
@@ -240,6 +269,92 @@ void main() {
     expect(find.text('Rest'), findsOneWidget); // rest timer started
     expect(tester.takeException(), isNull);
     await motion.samples$.close();
+    await unmount(tester);
+  });
+
+  testWidgets('a finished workout can be corrected from history', (
+    tester,
+  ) async {
+    final db = await pumpApp(
+      tester,
+      seed: (db) async {
+        final bench = await (db.select(
+          db.exercises,
+        )..where((e) => e.name.equals('Bench Press (Barbell)'))).getSingle();
+        final id = await db.startWorkout(now: DateTime(2026, 10, 27, 18));
+        await db.addExercisesToWorkout(id, [bench.id]);
+        final set =
+            (await db.watchWorkoutDetail(id).first)!.entries.single.sets.single;
+        await db.updateSet(
+          set.id,
+          const WorkoutSetsCompanion(reps: Value(8), weightGrams: Value(6000)),
+        );
+        await db.setDone(set.id, done: true);
+        await db.finishWorkout(id, now: DateTime(2026, 10, 27, 19));
+      },
+    );
+
+    await tester.tap(find.text('Workouts').last);
+    await settle(tester);
+    await tester.tap(find.text('Evening workout'));
+    await settle(tester);
+    expect(find.text('6 kg × 8'), findsOneWidget); // meant 60
+
+    await tester.tap(find.byTooltip('Edit workout'));
+    await settle(tester);
+    expect(find.text('Done'), findsOneWidget);
+    expect(find.byIcon(Icons.check_circle_outline), findsNothing); // no ticks
+    await tester.enterText(find.byType(TextField).first, '60');
+    await settle(tester);
+    await tester.tap(find.text('Done'));
+    await settle(tester);
+
+    expect(find.text('60 kg × 8'), findsOneWidget);
+    final sets = await tester.runAsync(() => db.select(db.workoutSets).get());
+    expect(sets!.single.weightGrams, 60000);
+    expect(tester.takeException(), isNull);
+    await unmount(tester);
+  });
+
+  testWidgets('back up from Settings, then restore over newer changes', (
+    tester,
+  ) async {
+    final files = FakeDocumentFiles();
+    final db = await pumpApp(
+      tester,
+      files: files,
+      seed: (db) => db.addBodyEntries(DateTime(2026, 10, 27, 7), {
+        BodyMetric.weight: 72500,
+      }),
+    );
+
+    await tester.tap(find.text('Settings').last);
+    await settle(tester);
+    await tester.scrollUntilVisible(find.text('Back up'), 200);
+    await tester.tap(find.text('Back up'));
+    await settle(tester);
+    expect(files.saved, contains('"formatVersion"'));
+    expect(files.savedName, startsWith('fitns-backup-'));
+    expect(find.text('Backup saved'), findsOneWidget);
+
+    // Something logged after the backup — the restore takes it away.
+    await tester.runAsync(
+      () => db.addBodyEntries(DateTime(2026, 10, 28, 7), {
+        BodyMetric.weight: 71000,
+      }),
+    );
+    await tester.tap(find.text('Restore'));
+    await settle(tester);
+    expect(find.text('Restore this backup?'), findsOneWidget);
+    await tester.tap(find.widgetWithText(TextButton, 'Restore'));
+    await settle(tester);
+
+    final entries = await tester.runAsync(
+      () => db.select(db.bodyEntries).get(),
+    );
+    expect(entries!.map((e) => e.value), [72500]);
+    expect(find.text('Backup restored'), findsOneWidget);
+    expect(tester.takeException(), isNull);
     await unmount(tester);
   });
 

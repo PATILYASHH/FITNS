@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/database.dart';
 import '../../data/providers.dart';
+import 'exercise_icons.dart';
 
 /// Creates the user's own exercise. Resolves to its id, or null if cancelled.
 Future<int?> showCustomExerciseSheet(
@@ -30,6 +31,13 @@ class _CustomExerciseSheetState extends ConsumerState<_CustomExerciseSheet> {
   var _equipment = Equipment.barbell;
   var _kind = ExerciseKind.weightReps;
 
+  /// Null until the user taps one — the icon then follows the choices above.
+  ExerciseIcon? _icon;
+
+  ExerciseIcon get _shownIcon =>
+      _icon ??
+      defaultExerciseIcon(muscle: _muscle, equipment: _equipment, kind: _kind);
+
   @override
   void dispose() {
     _name.dispose();
@@ -46,6 +54,7 @@ class _CustomExerciseSheetState extends ConsumerState<_CustomExerciseSheet> {
           muscle: _muscle,
           equipment: _equipment,
           kind: _kind,
+          icon: _shownIcon,
         );
     if (mounted) Navigator.pop(context, id);
   }
@@ -53,7 +62,7 @@ class _CustomExerciseSheetState extends ConsumerState<_CustomExerciseSheet> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Padding(
+    return SingleChildScrollView(
       padding: EdgeInsets.fromLTRB(
         20,
         0,
@@ -114,6 +123,32 @@ class _CustomExerciseSheetState extends ConsumerState<_CustomExerciseSheet> {
             ],
             selected: {_kind},
             onSelectionChanged: (s) => setState(() => _kind = s.first),
+          ),
+          const SizedBox(height: 16),
+          Text('Icon', style: theme.textTheme.labelLarge),
+          const SizedBox(height: 8),
+          SizedBox(
+            height: 52,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              itemCount: ExerciseIcon.values.length,
+              separatorBuilder: (_, _) => const SizedBox(width: 8),
+              itemBuilder: (context, i) {
+                final icon = ExerciseIcon.values[i];
+                return Tooltip(
+                  message: icon.label,
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(16),
+                    onTap: () => setState(() => _icon = icon),
+                    child: IconTile(
+                      icon.data,
+                      size: 52,
+                      selected: icon == _shownIcon,
+                    ),
+                  ),
+                );
+              },
+            ),
           ),
           const SizedBox(height: 20),
           FilledButton(

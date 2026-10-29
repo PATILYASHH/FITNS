@@ -541,6 +541,15 @@ class $ExercisesTable extends Exercises
         type: DriftSqlType.string,
         requiredDuringInsert: true,
       ).withConverter<ExerciseKind>($ExercisesTable.$converterkind);
+  @override
+  late final GeneratedColumnWithTypeConverter<ExerciseIcon?, String> icon =
+      GeneratedColumn<String>(
+        'icon',
+        aliasedName,
+        true,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+      ).withConverter<ExerciseIcon?>($ExercisesTable.$convertericonn);
   static const VerificationMeta _seedKeyMeta = const VerificationMeta(
     'seedKey',
   );
@@ -602,6 +611,7 @@ class $ExercisesTable extends Exercises
     muscle,
     equipment,
     kind,
+    icon,
     seedKey,
     isCustom,
     isArchived,
@@ -689,6 +699,12 @@ class $ExercisesTable extends Exercises
           data['${effectivePrefix}kind'],
         )!,
       ),
+      icon: $ExercisesTable.$convertericonn.fromSql(
+        attachedDatabase.typeMapping.read(
+          DriftSqlType.string,
+          data['${effectivePrefix}icon'],
+        ),
+      ),
       seedKey: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}seed_key'],
@@ -719,6 +735,10 @@ class $ExercisesTable extends Exercises
       const EnumNameConverter<Equipment>(Equipment.values);
   static JsonTypeConverter2<ExerciseKind, String, String> $converterkind =
       const EnumNameConverter<ExerciseKind>(ExerciseKind.values);
+  static JsonTypeConverter2<ExerciseIcon, String, String> $convertericon =
+      const EnumNameConverter<ExerciseIcon>(ExerciseIcon.values);
+  static JsonTypeConverter2<ExerciseIcon?, String?, String?> $convertericonn =
+      JsonTypeConverter2.asNullable($convertericon);
 }
 
 class ExerciseRow extends DataClass implements Insertable<ExerciseRow> {
@@ -727,6 +747,11 @@ class ExerciseRow extends DataClass implements Insertable<ExerciseRow> {
   final MuscleGroup muscle;
   final Equipment equipment;
   final ExerciseKind kind;
+
+  /// The user's pick for a custom exercise. Null → derived (built-ins always
+  /// are, so a better icon in an app update reaches existing installs).
+  /// Schema v3.
+  final ExerciseIcon? icon;
 
   /// Identifies a built-in exercise across app updates, so re-seeding can add
   /// new ones without duplicating old ones. Null for the user's own.
@@ -743,6 +768,7 @@ class ExerciseRow extends DataClass implements Insertable<ExerciseRow> {
     required this.muscle,
     required this.equipment,
     required this.kind,
+    this.icon,
     this.seedKey,
     required this.isCustom,
     required this.isArchived,
@@ -768,6 +794,11 @@ class ExerciseRow extends DataClass implements Insertable<ExerciseRow> {
         $ExercisesTable.$converterkind.toSql(kind),
       );
     }
+    if (!nullToAbsent || icon != null) {
+      map['icon'] = Variable<String>(
+        $ExercisesTable.$convertericonn.toSql(icon),
+      );
+    }
     if (!nullToAbsent || seedKey != null) {
       map['seed_key'] = Variable<String>(seedKey);
     }
@@ -784,6 +815,7 @@ class ExerciseRow extends DataClass implements Insertable<ExerciseRow> {
       muscle: Value(muscle),
       equipment: Value(equipment),
       kind: Value(kind),
+      icon: icon == null && nullToAbsent ? const Value.absent() : Value(icon),
       seedKey: seedKey == null && nullToAbsent
           ? const Value.absent()
           : Value(seedKey),
@@ -810,6 +842,9 @@ class ExerciseRow extends DataClass implements Insertable<ExerciseRow> {
       kind: $ExercisesTable.$converterkind.fromJson(
         serializer.fromJson<String>(json['kind']),
       ),
+      icon: $ExercisesTable.$convertericonn.fromJson(
+        serializer.fromJson<String?>(json['icon']),
+      ),
       seedKey: serializer.fromJson<String?>(json['seedKey']),
       isCustom: serializer.fromJson<bool>(json['isCustom']),
       isArchived: serializer.fromJson<bool>(json['isArchived']),
@@ -831,6 +866,9 @@ class ExerciseRow extends DataClass implements Insertable<ExerciseRow> {
       'kind': serializer.toJson<String>(
         $ExercisesTable.$converterkind.toJson(kind),
       ),
+      'icon': serializer.toJson<String?>(
+        $ExercisesTable.$convertericonn.toJson(icon),
+      ),
       'seedKey': serializer.toJson<String?>(seedKey),
       'isCustom': serializer.toJson<bool>(isCustom),
       'isArchived': serializer.toJson<bool>(isArchived),
@@ -844,6 +882,7 @@ class ExerciseRow extends DataClass implements Insertable<ExerciseRow> {
     MuscleGroup? muscle,
     Equipment? equipment,
     ExerciseKind? kind,
+    Value<ExerciseIcon?> icon = const Value.absent(),
     Value<String?> seedKey = const Value.absent(),
     bool? isCustom,
     bool? isArchived,
@@ -854,6 +893,7 @@ class ExerciseRow extends DataClass implements Insertable<ExerciseRow> {
     muscle: muscle ?? this.muscle,
     equipment: equipment ?? this.equipment,
     kind: kind ?? this.kind,
+    icon: icon.present ? icon.value : this.icon,
     seedKey: seedKey.present ? seedKey.value : this.seedKey,
     isCustom: isCustom ?? this.isCustom,
     isArchived: isArchived ?? this.isArchived,
@@ -866,6 +906,7 @@ class ExerciseRow extends DataClass implements Insertable<ExerciseRow> {
       muscle: data.muscle.present ? data.muscle.value : this.muscle,
       equipment: data.equipment.present ? data.equipment.value : this.equipment,
       kind: data.kind.present ? data.kind.value : this.kind,
+      icon: data.icon.present ? data.icon.value : this.icon,
       seedKey: data.seedKey.present ? data.seedKey.value : this.seedKey,
       isCustom: data.isCustom.present ? data.isCustom.value : this.isCustom,
       isArchived: data.isArchived.present
@@ -883,6 +924,7 @@ class ExerciseRow extends DataClass implements Insertable<ExerciseRow> {
           ..write('muscle: $muscle, ')
           ..write('equipment: $equipment, ')
           ..write('kind: $kind, ')
+          ..write('icon: $icon, ')
           ..write('seedKey: $seedKey, ')
           ..write('isCustom: $isCustom, ')
           ..write('isArchived: $isArchived, ')
@@ -898,6 +940,7 @@ class ExerciseRow extends DataClass implements Insertable<ExerciseRow> {
     muscle,
     equipment,
     kind,
+    icon,
     seedKey,
     isCustom,
     isArchived,
@@ -912,6 +955,7 @@ class ExerciseRow extends DataClass implements Insertable<ExerciseRow> {
           other.muscle == this.muscle &&
           other.equipment == this.equipment &&
           other.kind == this.kind &&
+          other.icon == this.icon &&
           other.seedKey == this.seedKey &&
           other.isCustom == this.isCustom &&
           other.isArchived == this.isArchived &&
@@ -924,6 +968,7 @@ class ExercisesCompanion extends UpdateCompanion<ExerciseRow> {
   final Value<MuscleGroup> muscle;
   final Value<Equipment> equipment;
   final Value<ExerciseKind> kind;
+  final Value<ExerciseIcon?> icon;
   final Value<String?> seedKey;
   final Value<bool> isCustom;
   final Value<bool> isArchived;
@@ -934,6 +979,7 @@ class ExercisesCompanion extends UpdateCompanion<ExerciseRow> {
     this.muscle = const Value.absent(),
     this.equipment = const Value.absent(),
     this.kind = const Value.absent(),
+    this.icon = const Value.absent(),
     this.seedKey = const Value.absent(),
     this.isCustom = const Value.absent(),
     this.isArchived = const Value.absent(),
@@ -945,6 +991,7 @@ class ExercisesCompanion extends UpdateCompanion<ExerciseRow> {
     required MuscleGroup muscle,
     required Equipment equipment,
     required ExerciseKind kind,
+    this.icon = const Value.absent(),
     this.seedKey = const Value.absent(),
     this.isCustom = const Value.absent(),
     this.isArchived = const Value.absent(),
@@ -959,6 +1006,7 @@ class ExercisesCompanion extends UpdateCompanion<ExerciseRow> {
     Expression<String>? muscle,
     Expression<String>? equipment,
     Expression<String>? kind,
+    Expression<String>? icon,
     Expression<String>? seedKey,
     Expression<bool>? isCustom,
     Expression<bool>? isArchived,
@@ -970,6 +1018,7 @@ class ExercisesCompanion extends UpdateCompanion<ExerciseRow> {
       if (muscle != null) 'muscle': muscle,
       if (equipment != null) 'equipment': equipment,
       if (kind != null) 'kind': kind,
+      if (icon != null) 'icon': icon,
       if (seedKey != null) 'seed_key': seedKey,
       if (isCustom != null) 'is_custom': isCustom,
       if (isArchived != null) 'is_archived': isArchived,
@@ -983,6 +1032,7 @@ class ExercisesCompanion extends UpdateCompanion<ExerciseRow> {
     Value<MuscleGroup>? muscle,
     Value<Equipment>? equipment,
     Value<ExerciseKind>? kind,
+    Value<ExerciseIcon?>? icon,
     Value<String?>? seedKey,
     Value<bool>? isCustom,
     Value<bool>? isArchived,
@@ -994,6 +1044,7 @@ class ExercisesCompanion extends UpdateCompanion<ExerciseRow> {
       muscle: muscle ?? this.muscle,
       equipment: equipment ?? this.equipment,
       kind: kind ?? this.kind,
+      icon: icon ?? this.icon,
       seedKey: seedKey ?? this.seedKey,
       isCustom: isCustom ?? this.isCustom,
       isArchived: isArchived ?? this.isArchived,
@@ -1025,6 +1076,11 @@ class ExercisesCompanion extends UpdateCompanion<ExerciseRow> {
         $ExercisesTable.$converterkind.toSql(kind.value),
       );
     }
+    if (icon.present) {
+      map['icon'] = Variable<String>(
+        $ExercisesTable.$convertericonn.toSql(icon.value),
+      );
+    }
     if (seedKey.present) {
       map['seed_key'] = Variable<String>(seedKey.value);
     }
@@ -1048,6 +1104,7 @@ class ExercisesCompanion extends UpdateCompanion<ExerciseRow> {
           ..write('muscle: $muscle, ')
           ..write('equipment: $equipment, ')
           ..write('kind: $kind, ')
+          ..write('icon: $icon, ')
           ..write('seedKey: $seedKey, ')
           ..write('isCustom: $isCustom, ')
           ..write('isArchived: $isArchived, ')
@@ -4304,6 +4361,7 @@ typedef $$ExercisesTableCreateCompanionBuilder =
       required MuscleGroup muscle,
       required Equipment equipment,
       required ExerciseKind kind,
+      Value<ExerciseIcon?> icon,
       Value<String?> seedKey,
       Value<bool> isCustom,
       Value<bool> isArchived,
@@ -4316,6 +4374,7 @@ typedef $$ExercisesTableUpdateCompanionBuilder =
       Value<MuscleGroup> muscle,
       Value<Equipment> equipment,
       Value<ExerciseKind> kind,
+      Value<ExerciseIcon?> icon,
       Value<String?> seedKey,
       Value<bool> isCustom,
       Value<bool> isArchived,
@@ -4409,6 +4468,12 @@ class $$ExercisesTableFilterComposer
         column: $table.kind,
         builder: (column) => ColumnWithTypeConverterFilters(column),
       );
+
+  ColumnWithTypeConverterFilters<ExerciseIcon?, ExerciseIcon, String>
+  get icon => $composableBuilder(
+    column: $table.icon,
+    builder: (column) => ColumnWithTypeConverterFilters(column),
+  );
 
   ColumnFilters<String> get seedKey => $composableBuilder(
     column: $table.seedKey,
@@ -4515,6 +4580,11 @@ class $$ExercisesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get icon => $composableBuilder(
+    column: $table.icon,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get seedKey => $composableBuilder(
     column: $table.seedKey,
     builder: (column) => ColumnOrderings(column),
@@ -4559,6 +4629,9 @@ class $$ExercisesTableAnnotationComposer
 
   GeneratedColumnWithTypeConverter<ExerciseKind, String> get kind =>
       $composableBuilder(column: $table.kind, builder: (column) => column);
+
+  GeneratedColumnWithTypeConverter<ExerciseIcon?, String> get icon =>
+      $composableBuilder(column: $table.icon, builder: (column) => column);
 
   GeneratedColumn<String> get seedKey =>
       $composableBuilder(column: $table.seedKey, builder: (column) => column);
@@ -4661,6 +4734,7 @@ class $$ExercisesTableTableManager
                 Value<MuscleGroup> muscle = const Value.absent(),
                 Value<Equipment> equipment = const Value.absent(),
                 Value<ExerciseKind> kind = const Value.absent(),
+                Value<ExerciseIcon?> icon = const Value.absent(),
                 Value<String?> seedKey = const Value.absent(),
                 Value<bool> isCustom = const Value.absent(),
                 Value<bool> isArchived = const Value.absent(),
@@ -4671,6 +4745,7 @@ class $$ExercisesTableTableManager
                 muscle: muscle,
                 equipment: equipment,
                 kind: kind,
+                icon: icon,
                 seedKey: seedKey,
                 isCustom: isCustom,
                 isArchived: isArchived,
@@ -4683,6 +4758,7 @@ class $$ExercisesTableTableManager
                 required MuscleGroup muscle,
                 required Equipment equipment,
                 required ExerciseKind kind,
+                Value<ExerciseIcon?> icon = const Value.absent(),
                 Value<String?> seedKey = const Value.absent(),
                 Value<bool> isCustom = const Value.absent(),
                 Value<bool> isArchived = const Value.absent(),
@@ -4693,6 +4769,7 @@ class $$ExercisesTableTableManager
                 muscle: muscle,
                 equipment: equipment,
                 kind: kind,
+                icon: icon,
                 seedKey: seedKey,
                 isCustom: isCustom,
                 isArchived: isArchived,

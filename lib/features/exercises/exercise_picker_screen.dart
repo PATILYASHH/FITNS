@@ -7,6 +7,7 @@ import '../../core/widgets/app_page.dart';
 import '../../data/database.dart';
 import '../../data/providers.dart';
 import 'custom_exercise_sheet.dart';
+import 'exercise_icons.dart';
 
 /// Pick one or more exercises. Pops with their ids, in the order picked.
 class ExercisePickerScreen extends ConsumerStatefulWidget {
@@ -140,6 +141,7 @@ class _ExercisePickerScreenState extends ConsumerState<ExercisePickerScreen> {
                 final e = shown[i];
                 final order = _selected.indexOf(e.id);
                 return ListTile(
+                  leading: ExerciseAvatar(e),
                   title: Text(e.name),
                   subtitle: Text(
                     '${e.muscle.label} · ${e.equipment.label}'

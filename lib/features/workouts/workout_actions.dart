@@ -27,6 +27,10 @@ Future<void> startWorkout(
     if (resume && context.mounted) context.push('/workout/${active.id}/log');
     return;
   }
+  final alerts = ref.read(restAlertsProvider);
   final id = await db.startWorkout(routineId: routineId);
   if (context.mounted) context.push('/workout/$id/log');
+  // Rest alerts need notifications on Android 13+. Asked here, when they
+  // start to matter; Android stops showing the prompt once it's refused.
+  await alerts.requestNotifications();
 }

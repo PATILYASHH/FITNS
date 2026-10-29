@@ -3,9 +3,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/dates.dart';
 import '../core/motion/motion_sensors.dart';
+import '../core/notifications/rest_alerts.dart';
+import '../core/platform/document_files.dart';
 import '../core/steps/step_sensor.dart';
 import '../core/steps/step_tracker.dart';
 import '../core/units.dart';
+import 'backup.dart';
 import 'database.dart';
 
 final dbProvider = Provider<AppDatabase>((ref) {
@@ -13,6 +16,14 @@ final dbProvider = Provider<AppDatabase>((ref) {
   ref.onDispose(db.close);
   return db;
 });
+
+final backupServiceProvider = Provider<BackupService>(
+  (ref) => BackupService(ref.watch(dbProvider)),
+);
+
+final documentFilesProvider = Provider<DocumentFiles>(
+  (ref) => const DocumentFiles(),
+);
 
 // ── Settings ────────────────────────────────────────────────────────────────
 
@@ -58,11 +69,13 @@ final workoutHistoryProvider = StreamProvider<List<WorkoutSummary>>(
   (ref) => ref.watch(dbProvider).watchWorkoutHistory(),
 );
 
-/// Last time's sets for an exercise — the "Previous" column. Read once per
-/// screen; it can't change while a workout is in progress.
+/// Last time's sets for an exercise — the "Previous" column — from the
+/// workouts before the one on screen. Read once per screen.
 final previousSetsProvider = FutureProvider.autoDispose
-    .family<List<WorkoutSetRow>, int>(
-      (ref, exerciseId) => ref.watch(dbProvider).previousSets(exerciseId),
+    .family<List<WorkoutSetRow>, ({int exerciseId, int workoutId})>(
+      (ref, key) => ref
+          .watch(dbProvider)
+          .previousSets(key.exerciseId, beforeWorkoutId: key.workoutId),
     );
 
 // ── Body ────────────────────────────────────────────────────────────────────
@@ -136,3 +149,13 @@ final stepTrackerProvider = Provider<StepTracker>((ref) {
 
 /// What the step sensor last reported. Null until the first check.
 final stepStatusProvider = StateProvider<StepSensorStatus?>((ref) => null);
+
+// ── Rest alerts ─────────────────────────────────────────────────────────────
+
+final restAlertsProvider = Provider<RestAlerts>((ref) => const RestAlerts());
+
+/// Whether rest alerts can reach a locked phone. Invalidated on resume — the
+/// user may have just changed it in system settings.
+final restAlertStatusProvider = FutureProvider.autoDispose<RestAlertStatus>(
+  (ref) => ref.watch(restAlertsProvider).status(),
+);

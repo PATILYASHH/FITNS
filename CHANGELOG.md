@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.0.2 — 2026-10-29
+
+- **Exercise icons** — every exercise shows an icon for its kind of movement
+  (weights, bodyweight, core, holds, jumps, cardio…), in the picker, workout,
+  routines and history. Pick one for your own exercises.
+- **Edit finished workouts** — fix a mistyped set, add or remove sets and
+  exercises, rename, or move the workout to another date and time.
+- **Backup & restore** — save everything to one file wherever you like
+  (Downloads, Drive…), and restore it on this or another phone. Restoring
+  shows what's in the backup first and replaces everything only once you
+  confirm.
+- **Rest timer alerts** — with the phone locked or FITNS in the background,
+  a countdown shows on the lock screen and the phone buzzes when rest is
+  over. Settings shows whether alerts can arrive on time.
+
 ## 0.0.1 — 2026-10-28
 
 The first release. Android only, fully offline — the app has no internet

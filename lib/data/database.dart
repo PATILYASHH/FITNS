@@ -88,13 +88,14 @@ class AppDatabase extends _$AppDatabase {
     : super(executor ?? driftDatabase(name: 'fitns'));
 
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 3;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
     onCreate: (m) => m.createAll(),
     onUpgrade: (m, from, to) async {
       if (from < 2) await m.addColumn(settings, settings.allDaySteps);
+      if (from < 3) await m.addColumn(exercises, exercises.icon);
     },
     beforeOpen: (details) async {
       // SQLite leaves foreign keys off unless asked, and the cascades in
@@ -163,12 +164,14 @@ class AppDatabase extends _$AppDatabase {
     required MuscleGroup muscle,
     required Equipment equipment,
     required ExerciseKind kind,
+    ExerciseIcon? icon,
   }) => into(exercises).insert(
     ExercisesCompanion.insert(
       name: name.trim(),
       muscle: muscle,
       equipment: equipment,
       kind: kind,
+      icon: Value(icon),
       isCustom: const Value(true),
     ),
   );
@@ -177,12 +180,16 @@ class AppDatabase extends _$AppDatabase {
   /// uses is archived instead, so history never loses a name. Returns whether
   /// it was archived.
   Future<bool> removeExercise(int id) => transaction(() async {
-    final inWorkout = await (select(
-      workoutExercises,
-    )..where((w) => w.exerciseId.equals(id))..limit(1)).get();
-    final inRoutine = await (select(
-      routineExercises,
-    )..where((r) => r.exerciseId.equals(id))..limit(1)).get();
+    final inWorkout =
+        await (select(workoutExercises)
+              ..where((w) => w.exerciseId.equals(id))
+              ..limit(1))
+            .get();
+    final inRoutine =
+        await (select(routineExercises)
+              ..where((r) => r.exerciseId.equals(id))
+              ..limit(1))
+            .get();
     if (inWorkout.isNotEmpty || inRoutine.isNotEmpty) {
       await (update(exercises)..where((e) => e.id.equals(id))).write(
         const ExercisesCompanion(isArchived: Value(true)),
@@ -321,36 +328,35 @@ class AppDatabase extends _$AppDatabase {
 
   /// Starts a workout, from a routine or empty. If one is already in progress
   /// that one's id comes back instead — there is only ever one.
-  Future<int> startWorkout({int? routineId, DateTime? now}) =>
-      transaction(() async {
-        final active = await activeWorkout();
-        if (active != null) return active.id;
+  Future<int> startWorkout({int? routineId, DateTime? now}) => transaction(
+    () async {
+      final active = await activeWorkout();
+      if (active != null) return active.id;
 
-        final start = now ?? DateTime.now();
-        final routine = routineId == null
-            ? null
-            : await routineDetail(routineId);
-        final workoutId = await into(workouts).insert(
-          WorkoutsCompanion.insert(
-            routineId: Value(routine?.routine.id),
-            name: routine?.routine.name ?? workoutNameFor(start),
-            startedAt: start,
+      final start = now ?? DateTime.now();
+      final routine = routineId == null ? null : await routineDetail(routineId);
+      final workoutId = await into(workouts).insert(
+        WorkoutsCompanion.insert(
+          routineId: Value(routine?.routine.id),
+          name: routine?.routine.name ?? workoutNameFor(start),
+          startedAt: start,
+        ),
+      );
+      for (final (i, entry) in (routine?.items ?? const []).indexed) {
+        final itemId = await into(workoutExercises).insert(
+          WorkoutExercisesCompanion.insert(
+            workoutId: workoutId,
+            exerciseId: entry.exercise.id,
+            sort: i,
+            targetReps: Value(entry.item.targetReps),
+            restSeconds: Value(entry.item.restSeconds),
           ),
         );
-        for (final (i, entry) in (routine?.items ?? const []).indexed) {
-          final itemId = await into(workoutExercises).insert(
-            WorkoutExercisesCompanion.insert(
-              workoutId: workoutId,
-              exerciseId: entry.exercise.id,
-              sort: i,
-              targetReps: Value(entry.item.targetReps),
-              restSeconds: Value(entry.item.restSeconds),
-            ),
-          );
-          await _insertEmptySets(itemId, entry.item.targetSets.clamp(1, 20));
-        }
-        return workoutId;
-      });
+        await _insertEmptySets(itemId, entry.item.targetSets.clamp(1, 20));
+      }
+      return workoutId;
+    },
+  );
 
   /// Appends exercises to a workout, each with as many empty sets as it had
   /// last time (or one, the first time).
@@ -359,14 +365,17 @@ class AppDatabase extends _$AppDatabase {
         final max = workoutExercises.sort.max();
         var sort =
             ((await (selectOnly(workoutExercises)
-                          ..addColumns([max])
-                          ..where(workoutExercises.workoutId.equals(workoutId)))
-                        .map((r) => r.read(max))
-                        .getSingle()) ??
-                    -1) +
+                      ..addColumns([max])
+                      ..where(workoutExercises.workoutId.equals(workoutId)))
+                    .map((r) => r.read(max))
+                    .getSingle()) ??
+                -1) +
             1;
         for (final exerciseId in exerciseIds) {
-          final previous = await previousSets(exerciseId);
+          final previous = await previousSets(
+            exerciseId,
+            beforeWorkoutId: workoutId,
+          );
           final itemId = await into(workoutExercises).insert(
             WorkoutExercisesCompanion.insert(
               workoutId: workoutId,
@@ -387,11 +396,12 @@ class AppDatabase extends _$AppDatabase {
 
   Future<int> addSet(int workoutExerciseId) async {
     final max = workoutSets.sort.max();
-    final last = await (selectOnly(workoutSets)
-          ..addColumns([max])
-          ..where(workoutSets.workoutExerciseId.equals(workoutExerciseId)))
-        .map((r) => r.read(max))
-        .getSingle();
+    final last =
+        await (selectOnly(workoutSets)
+              ..addColumns([max])
+              ..where(workoutSets.workoutExerciseId.equals(workoutExerciseId)))
+            .map((r) => r.read(max))
+            .getSingle();
     return into(workoutSets).insert(
       WorkoutSetsCompanion.insert(
         workoutExerciseId: workoutExerciseId,
@@ -421,7 +431,10 @@ class AppDatabase extends _$AppDatabase {
       index = sets.length - 1;
     }
     final target = sets[index];
-    final previous = await previousSets(item.exerciseId);
+    final previous = await previousSets(
+      item.exerciseId,
+      beforeWorkoutId: item.workoutId,
+    );
     final weight =
         target.weightGrams ??
         (index < previous.length ? previous[index].weightGrams : null) ??
@@ -440,6 +453,9 @@ class AppDatabase extends _$AppDatabase {
     );
     return target.id;
   });
+
+  Future<WorkoutRow> _workout(int id) =>
+      (select(workouts)..where((w) => w.id.equals(id))).getSingle();
 
   Future<List<WorkoutSetRow>> _setsOf(int itemId) =>
       (select(workoutSets)
@@ -478,22 +494,70 @@ class AppDatabase extends _$AppDatabase {
           ..addColumns([workoutExercises.id])
           ..where(workoutExercises.workoutId.equals(workoutId));
         await (delete(workoutSets)..where(
-              (s) => s.done.equals(false) & s.workoutExerciseId.isInQuery(itemIds),
+              (s) =>
+                  s.done.equals(false) & s.workoutExerciseId.isInQuery(itemIds),
             ))
             .go();
-        await (delete(workoutExercises)..where(
-              (w) =>
-                  w.workoutId.equals(workoutId) &
-                  notExistsQuery(
-                    select(workoutSets)
-                      ..where((s) => s.workoutExerciseId.equalsExp(w.id)),
-                  ),
-            ))
-            .go();
+        await _dropEmptyExercises(workoutId);
         await (update(workouts)..where((w) => w.id.equals(workoutId))).write(
           WorkoutsCompanion(endedAt: Value(now ?? DateTime.now())),
         );
       });
+
+  /// Closes an edit of a finished workout. There are no ticks in history:
+  /// a set with a value is a set that was done, an empty one is dropped, and
+  /// so is any exercise left with no sets.
+  Future<void> saveEditedWorkout(int workoutId) => transaction(() async {
+    final workout = await _workout(workoutId);
+    final itemIds = selectOnly(workoutExercises)
+      ..addColumns([workoutExercises.id])
+      ..where(workoutExercises.workoutId.equals(workoutId));
+    await (delete(workoutSets)..where(
+          (s) =>
+              s.workoutExerciseId.isInQuery(itemIds) &
+              s.reps.isNull() &
+              s.durationSeconds.isNull(),
+        ))
+        .go();
+    await (update(workoutSets)..where(
+          (s) => s.workoutExerciseId.isInQuery(itemIds) & s.done.equals(false),
+        ))
+        .write(
+          WorkoutSetsCompanion(
+            done: const Value(true),
+            completedAt: Value(workout.endedAt),
+          ),
+        );
+    await _dropEmptyExercises(workoutId);
+  });
+
+  /// Moves a workout to start at [start], keeping its length.
+  Future<void> moveWorkout(int workoutId, DateTime start) =>
+      transaction(() async {
+        final workout = await _workout(workoutId);
+        final ended = workout.endedAt;
+        await (update(workouts)..where((w) => w.id.equals(workoutId))).write(
+          WorkoutsCompanion(
+            startedAt: Value(start),
+            endedAt: Value(
+              ended == null
+                  ? null
+                  : start.add(ended.difference(workout.startedAt)),
+            ),
+          ),
+        );
+      });
+
+  Future<void> _dropEmptyExercises(int workoutId) =>
+      (delete(workoutExercises)..where(
+            (w) =>
+                w.workoutId.equals(workoutId) &
+                notExistsQuery(
+                  select(workoutSets)
+                    ..where((s) => s.workoutExerciseId.equalsExp(w.id)),
+                ),
+          ))
+          .go();
 
   /// Discards an in-progress workout, or deletes one from history. Its
   /// exercises and sets go with it.
@@ -581,8 +645,19 @@ class AppDatabase extends _$AppDatabase {
 
   /// The ticked-off sets from the last finished workout that included
   /// [exerciseId] — what the "Previous" column shows. An in-progress workout
-  /// never counts: it has no end yet.
-  Future<List<WorkoutSetRow>> previousSets(int exerciseId) async {
+  /// never counts: it has no end yet. With [beforeWorkoutId], only workouts
+  /// that came before that one — so a workout being edited never shows
+  /// itself, or a later one, as "previous". Start times are stored to the
+  /// second, so equal starts fall back to the order they were created in.
+  Future<List<WorkoutSetRow>> previousSets(
+    int exerciseId, {
+    int? beforeWorkoutId,
+  }) async {
+    final anchor = beforeWorkoutId == null
+        ? null
+        : await (select(
+            workouts,
+          )..where((w) => w.id.equals(beforeWorkoutId))).getSingleOrNull();
     final latest =
         await (select(workoutExercises).join([
                 innerJoin(
@@ -592,7 +667,14 @@ class AppDatabase extends _$AppDatabase {
               ])
               ..where(
                 workoutExercises.exerciseId.equals(exerciseId) &
-                    workouts.endedAt.isNotNull(),
+                    workouts.endedAt.isNotNull() &
+                    (anchor == null
+                        ? const Constant(true)
+                        : workouts.startedAt.isSmallerThanValue(
+                                anchor.startedAt,
+                              ) |
+                              (workouts.startedAt.equals(anchor.startedAt) &
+                                  workouts.id.isSmallerThanValue(anchor.id))),
               )
               ..orderBy([
                 OrderingTerm.desc(workouts.startedAt),
@@ -603,7 +685,9 @@ class AppDatabase extends _$AppDatabase {
     if (latest == null) return const [];
     final itemId = latest.readTable(workoutExercises).id;
     return (select(workoutSets)
-          ..where((s) => s.workoutExerciseId.equals(itemId) & s.done.equals(true))
+          ..where(
+            (s) => s.workoutExerciseId.equals(itemId) & s.done.equals(true),
+          )
           ..orderBy([(s) => OrderingTerm.asc(s.sort)]))
         .get();
   }
@@ -668,9 +752,8 @@ class AppDatabase extends _$AppDatabase {
       await into(dailySteps).insert(
         DailyStepsCompanion.insert(day: dayKey(at), steps: Value(delta)),
         onConflict: DoUpdate(
-          (old) => DailyStepsCompanion.custom(
-            steps: old.steps + Constant(delta),
-          ),
+          (old) =>
+              DailyStepsCompanion.custom(steps: old.steps + Constant(delta)),
         ),
       );
     }

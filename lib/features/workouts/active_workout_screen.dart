@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:intl/intl.dart';
 
 import '../../core/dates.dart';
 import '../../core/theme/app_theme.dart';
@@ -10,12 +11,14 @@ import '../../core/units.dart';
 import '../../core/widgets/app_page.dart';
 import '../../data/database.dart';
 import '../../data/providers.dart';
+import '../exercises/exercise_icons.dart';
 import 'rep_profiles.dart';
 import 'rest_timer.dart';
 import 'set_format.dart';
 
-/// Logging a workout in progress. Every keystroke is written straight to the
-/// database, so the app can be killed mid-set without losing anything.
+/// Logging a workout in progress — or, opened on a finished one, editing it.
+/// Every keystroke is written straight to the database, so the app can be
+/// killed mid-set without losing anything.
 class ActiveWorkoutScreen extends ConsumerWidget {
   const ActiveWorkoutScreen({super.key, required this.workoutId});
 
@@ -26,9 +29,8 @@ class ActiveWorkoutScreen extends ConsumerWidget {
     return ref
         .watch(workoutDetailProvider(workoutId))
         .when(
-          loading: () => const Scaffold(
-            body: Center(child: CircularProgressIndicator()),
-          ),
+          loading: () =>
+              const Scaffold(body: Center(child: CircularProgressIndicator())),
           error: (e, _) => Scaffold(
             appBar: AppBar(),
             body: Center(child: Text('Could not load this workout.\n$e')),
@@ -38,7 +40,7 @@ class ActiveWorkoutScreen extends ConsumerWidget {
                   appBar: AppBar(),
                   body: const EmptyHint(
                     icon: Icons.check_circle_outline,
-                    message: 'This workout is no longer running.',
+                    message: 'This workout no longer exists.',
                   ),
                 )
               : _WorkoutLog(detail: detail),
@@ -53,9 +55,14 @@ class _WorkoutLog extends ConsumerWidget {
 
   WorkoutRow get workout => detail.workout;
 
+  /// A finished workout opened from history: no clock, no ticks, no rest
+  /// timer — just its sets to correct.
+  bool get editing => workout.endedAt != null;
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
+    final db = ref.read(dbProvider);
     final units = ref.watch(unitsProvider);
     final defaultRest =
         ref.watch(
@@ -63,80 +70,119 @@ class _WorkoutLog extends ConsumerWidget {
         ) ??
         90;
 
-    return Scaffold(
-      appBar: AppBar(
-        titleSpacing: 0,
-        title: InkWell(
-          borderRadius: BorderRadius.circular(8),
-          onTap: () => _rename(context, ref),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 4),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  workout.name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.titleLarge,
-                ),
-                TickerBuilder(
-                  builder: (context, now) => Text(
-                    formatClock(now.difference(workout.startedAt)),
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: theme.accent,
-                      fontFeatures: const [FontFeature.tabularFigures()],
-                    ),
+    return PopScope(
+      // However an edit is left — Done, back, a gesture — tidy it up.
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop && editing) db.saveEditedWorkout(workout.id);
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          titleSpacing: 0,
+          title: InkWell(
+            borderRadius: BorderRadius.circular(8),
+            onTap: () => _rename(context, ref),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    workout.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.titleLarge,
                   ),
+                  if (editing)
+                    Text(
+                      DateFormat(
+                        'EEE, d MMM · h:mm a',
+                      ).format(workout.startedAt),
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: theme.muted,
+                      ),
+                    )
+                  else
+                    TickerBuilder(
+                      builder: (context, now) => Text(
+                        formatClock(now.difference(workout.startedAt)),
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: theme.accent,
+                          fontFeatures: const [FontFeature.tabularFigures()],
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            FilledButton(
+              style: FilledButton.styleFrom(minimumSize: const Size(0, 40)),
+              onPressed: editing
+                  ? () => context.pop()
+                  : () => _finish(context, ref),
+              child: Text(editing ? 'Done' : 'Finish'),
+            ),
+            PopupMenuButton<String>(
+              onSelected: (value) => switch (value) {
+                'rename' => _rename(context, ref),
+                'date' => _changeDate(context, ref),
+                _ => _discard(context, ref),
+              },
+              itemBuilder: (_) => [
+                const PopupMenuItem(value: 'rename', child: Text('Rename')),
+                if (editing)
+                  const PopupMenuItem(
+                    value: 'date',
+                    child: Text('Change date & time'),
+                  ),
+                PopupMenuItem(
+                  value: 'discard',
+                  child: Text(editing ? 'Delete workout' : 'Discard workout'),
                 ),
               ],
             ),
-          ),
+          ],
         ),
-        actions: [
-          FilledButton(
-            style: FilledButton.styleFrom(minimumSize: const Size(0, 40)),
-            onPressed: () => _finish(context, ref),
-            child: const Text('Finish'),
-          ),
-          PopupMenuButton<String>(
-            onSelected: (value) => switch (value) {
-              'rename' => _rename(context, ref),
-              _ => _discard(context, ref),
-            },
-            itemBuilder: (_) => const [
-              PopupMenuItem(value: 'rename', child: Text('Rename')),
-              PopupMenuItem(value: 'discard', child: Text('Discard workout')),
-            ],
-          ),
-        ],
-      ),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
-        children: [
-          for (final entry in detail.entries)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: _ExerciseCard(
-                key: ValueKey(entry.item.id),
-                entry: entry,
-                units: units,
-                restSeconds: entry.item.restSeconds ?? defaultRest,
+        body: ListView(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+          children: [
+            if (editing)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(4, 0, 4, 12),
+                child: Text(
+                  'Changes save as you type. Sets left empty are removed '
+                  "when you're done.",
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.muted,
+                  ),
+                ),
               ),
+            for (final entry in detail.entries)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: _ExerciseCard(
+                  key: ValueKey(entry.item.id),
+                  entry: entry,
+                  units: units,
+                  restSeconds: entry.item.restSeconds ?? defaultRest,
+                  editing: editing,
+                ),
+              ),
+            if (detail.entries.isEmpty)
+              const EmptyHint(
+                icon: Icons.fitness_center,
+                message: 'Add an exercise to start logging.',
+              ),
+            OutlinedButton.icon(
+              onPressed: () => _addExercises(context, ref),
+              icon: const Icon(Icons.add),
+              label: const Text('Add exercises'),
             ),
-          if (detail.entries.isEmpty)
-            const EmptyHint(
-              icon: Icons.fitness_center,
-              message: 'Add an exercise to start logging.',
-            ),
-          OutlinedButton.icon(
-            onPressed: () => _addExercises(context, ref),
-            icon: const Icon(Icons.add),
-            label: const Text('Add exercises'),
-          ),
-        ],
+          ],
+        ),
+        bottomNavigationBar: editing ? null : const RestTimerBar(),
       ),
-      bottomNavigationBar: const RestTimerBar(),
     );
   }
 
@@ -159,6 +205,28 @@ class _WorkoutLog extends ConsumerWidget {
     await db.renameWorkout(workout.id, name);
   }
 
+  /// Moves a finished workout, keeping its length.
+  Future<void> _changeDate(BuildContext context, WidgetRef ref) async {
+    final db = ref.read(dbProvider);
+    final start = workout.startedAt;
+    final day = await showDatePicker(
+      context: context,
+      initialDate: start,
+      firstDate: DateTime(2000),
+      lastDate: DateTime.now(),
+    );
+    if (day == null || !context.mounted) return;
+    final time = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(start),
+    );
+    if (time == null) return;
+    await db.moveWorkout(
+      workout.id,
+      DateTime(day.year, day.month, day.day, time.hour, time.minute),
+    );
+  }
+
   Future<void> _finish(BuildContext context, WidgetRef ref) async {
     final db = ref.read(dbProvider);
     final done = detail.doneSets.length;
@@ -175,8 +243,10 @@ class _WorkoutLog extends ConsumerWidget {
       if (discard && context.mounted) await _drop(context, ref);
       return;
     }
-    final unticked =
-        detail.entries.expand((e) => e.sets).where((s) => !s.done).length;
+    final unticked = detail.entries
+        .expand((e) => e.sets)
+        .where((s) => !s.done)
+        .length;
     final ok = await confirm(
       context,
       title: 'Finish workout?',
@@ -195,20 +265,27 @@ class _WorkoutLog extends ConsumerWidget {
   Future<void> _discard(BuildContext context, WidgetRef ref) async {
     final ok = await confirm(
       context,
-      title: 'Discard workout?',
-      message: 'Everything logged in it will be deleted.',
-      action: 'Discard',
+      title: editing ? 'Delete this workout?' : 'Discard workout?',
+      message: editing
+          ? 'It will be removed from your history.'
+          : 'Everything logged in it will be deleted.',
+      action: editing ? 'Delete' : 'Discard',
       destructive: true,
     );
     if (ok && context.mounted) await _drop(context, ref);
   }
 
-  /// Leaves first, then deletes — so this screen never redraws around a
-  /// workout that has gone.
+  /// Leaves first, then deletes — so no screen redraws around a workout
+  /// that has gone.
   Future<void> _drop(BuildContext context, WidgetRef ref) async {
     final db = ref.read(dbProvider);
-    ref.read(restTimerProvider.notifier).stop();
-    context.pop();
+    if (editing) {
+      // The detail page underneath shows this workout too.
+      context.go('/workouts');
+    } else {
+      ref.read(restTimerProvider.notifier).stop();
+      context.pop();
+    }
     await db.deleteWorkout(workout.id);
   }
 }
@@ -219,11 +296,13 @@ class _ExerciseCard extends ConsumerWidget {
     required this.entry,
     required this.units,
     required this.restSeconds,
+    required this.editing,
   });
 
   final WorkoutEntry entry;
   final UnitSystem units;
   final int restSeconds;
+  final bool editing;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -231,7 +310,15 @@ class _ExerciseCard extends ConsumerWidget {
     final db = ref.read(dbProvider);
     final exercise = entry.exercise;
     final previous =
-        ref.watch(previousSetsProvider(exercise.id)).valueOrNull ?? const [];
+        ref
+            .watch(
+              previousSetsProvider((
+                exerciseId: exercise.id,
+                workoutId: entry.item.workoutId,
+              )),
+            )
+            .valueOrNull ??
+        const [];
 
     return Card(
       child: Padding(
@@ -241,9 +328,13 @@ class _ExerciseCard extends ConsumerWidget {
           children: [
             Row(
               children: [
+                Padding(
+                  padding: const EdgeInsets.only(left: 4),
+                  child: ExerciseAvatar(exercise),
+                ),
                 Expanded(
                   child: Padding(
-                    padding: const EdgeInsets.only(left: 8),
+                    padding: const EdgeInsets.only(left: 12),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -261,7 +352,7 @@ class _ExerciseCard extends ConsumerWidget {
                     ),
                   ),
                 ),
-                if (repProfileFor(exercise) != null)
+                if (!editing && repProfileFor(exercise) != null)
                   IconButton(
                     tooltip: 'Count with sensors',
                     color: theme.accent,
@@ -284,7 +375,11 @@ class _ExerciseCard extends ConsumerWidget {
             const SizedBox(height: 4),
             Padding(
               padding: const EdgeInsets.only(right: 8),
-              child: _SetHeader(kind: exercise.kind, units: units),
+              child: _SetHeader(
+                kind: exercise.kind,
+                units: units,
+                editing: editing,
+              ),
             ),
             for (final (i, set) in entry.sets.indexed)
               Padding(
@@ -299,6 +394,7 @@ class _ExerciseCard extends ConsumerWidget {
                   above: i > 0 ? entry.sets[i - 1] : null,
                   targetReps: entry.item.targetReps,
                   restSeconds: restSeconds,
+                  editing: editing,
                 ),
               ),
             Align(
@@ -317,10 +413,15 @@ class _ExerciseCard extends ConsumerWidget {
 }
 
 class _SetHeader extends StatelessWidget {
-  const _SetHeader({required this.kind, required this.units});
+  const _SetHeader({
+    required this.kind,
+    required this.units,
+    required this.editing,
+  });
 
   final ExerciseKind kind;
   final UnitSystem units;
+  final bool editing;
 
   @override
   Widget build(BuildContext context) {
@@ -347,7 +448,7 @@ class _SetHeader extends StatelessWidget {
             cell(units.massUnit.toUpperCase(), 2),
           if (kind != ExerciseKind.duration) cell('REPS', 2),
           if (kind == ExerciseKind.duration) cell('TIME', 3),
-          const SizedBox(width: 48),
+          SizedBox(width: editing ? 8 : 48),
         ],
       ),
     );
@@ -370,6 +471,7 @@ class _SetRow extends ConsumerStatefulWidget {
     required this.above,
     required this.targetReps,
     required this.restSeconds,
+    required this.editing,
   });
 
   final WorkoutSetRow set;
@@ -380,6 +482,10 @@ class _SetRow extends ConsumerStatefulWidget {
   final WorkoutSetRow? above;
   final int? targetReps;
   final int restSeconds;
+
+  /// History, not a live set: no tick, no rest timer. Every set with a
+  /// value is kept when the edit ends.
+  final bool editing;
 
   @override
   ConsumerState<_SetRow> createState() => _SetRowState();
@@ -500,7 +606,9 @@ class _SetRowState extends ConsumerState<_SetRow> {
       margin: const EdgeInsets.symmetric(vertical: 2),
       padding: const EdgeInsets.symmetric(vertical: 4),
       decoration: BoxDecoration(
-        color: done ? theme.accent.withValues(alpha: 0.12) : null,
+        color: done && !widget.editing
+            ? theme.accent.withValues(alpha: 0.12)
+            : null,
         borderRadius: BorderRadius.circular(12),
       ),
       child: Row(
@@ -576,21 +684,26 @@ class _SetRowState extends ConsumerState<_SetRow> {
                     : _durationText(_hintDuration),
                 keyboardType: TextInputType.datetime,
                 onChanged: (text) => _write(
-                  WorkoutSetsCompanion(durationSeconds: Value(parseDuration(text))),
+                  WorkoutSetsCompanion(
+                    durationSeconds: Value(parseDuration(text)),
+                  ),
                 ),
               ),
             ),
-          SizedBox(
-            width: 48,
-            child: IconButton(
-              tooltip: done ? 'Mark not done' : 'Mark done',
-              onPressed: _toggle,
-              icon: Icon(
-                done ? Icons.check_circle : Icons.check_circle_outline,
-                color: done ? theme.accent : theme.muted,
+          if (widget.editing)
+            const SizedBox(width: 8)
+          else
+            SizedBox(
+              width: 48,
+              child: IconButton(
+                tooltip: done ? 'Mark not done' : 'Mark done',
+                onPressed: _toggle,
+                icon: Icon(
+                  done ? Icons.check_circle : Icons.check_circle_outline,
+                  color: done ? theme.accent : theme.muted,
+                ),
               ),
             ),
-          ),
         ],
       ),
     );
@@ -667,16 +780,6 @@ class RestTimerBar extends ConsumerWidget {
         child: TickerBuilder(
           builder: (context, now) {
             final left = timer.remaining(now);
-            if (left == Duration.zero) {
-              WidgetsBinding.instance.addPostFrameCallback((_) {
-                // Only the timer this frame saw — a new set may have started
-                // a fresh one in between.
-                if (context.mounted && ref.read(restTimerProvider) == timer) {
-                  HapticFeedback.vibrate();
-                  controller.stop();
-                }
-              });
-            }
             return Column(
               mainAxisSize: MainAxisSize.min,
               children: [
