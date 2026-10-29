@@ -23,7 +23,7 @@ String formatSet(WorkoutSetRow s, ExerciseKind kind, UnitSystem units) {
 }
 
 /// `12,450 kg` — a workout's total load, to the whole unit.
-String formatVolume(int grams, UnitSystem units) =>
+String formatLiftVolume(int grams, UnitSystem units) =>
     '${NumberFormat('#,##0').format(massValue(grams, units))} ${units.massUnit}';
 
 /// Seconds from `1:30`, `20:00` or a bare `45` (seconds). Null if unusable.

@@ -79,6 +79,9 @@ int setVolumeGrams(WorkoutSetRow s) => (s.weightGrams ?? 0) * (s.reps ?? 0);
     BodyEntries,
     StepWatermarks,
     DailySteps,
+    WaterLogs,
+    Foods,
+    FoodLogs,
   ],
 )
 class AppDatabase extends _$AppDatabase {
@@ -88,7 +91,7 @@ class AppDatabase extends _$AppDatabase {
     : super(executor ?? driftDatabase(name: 'fitns'));
 
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => 4;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -96,6 +99,25 @@ class AppDatabase extends _$AppDatabase {
     onUpgrade: (m, from, to) async {
       if (from < 2) await m.addColumn(settings, settings.allDaySteps);
       if (from < 3) await m.addColumn(exercises, exercises.icon);
+      if (from < 4) {
+        for (final column in [
+          settings.waterGoalMl,
+          settings.waterPresetsMl,
+          settings.calorieGoal,
+          settings.proteinGoalG,
+          settings.carbsGoalG,
+          settings.fatGoalG,
+          settings.birthYear,
+          settings.sex,
+          settings.activityLevel,
+        ]) {
+          await m.addColumn(settings, column);
+        }
+        await m.createTable(waterLogs);
+        await m.createTable(foods);
+        await m.createTable(foodLogs);
+        await m.createIndex(foodLogsDay);
+      }
     },
     beforeOpen: (details) async {
       // SQLite leaves foreign keys off unless asked, and the cascades in
@@ -718,6 +740,167 @@ class AppDatabase extends _$AppDatabase {
   /// Deletes a whole log — every metric recorded at [at].
   Future<void> deleteBodyLog(DateTime at) =>
       (delete(bodyEntries)..where((e) => e.measuredAt.equals(at))).go();
+
+  // ── Water ──────────────────────────────────────────────────────────────────
+
+  Future<int> addWater(int ml, {DateTime? at}) => into(
+    waterLogs,
+  ).insert(WaterLogsCompanion.insert(loggedAt: at ?? DateTime.now(), ml: ml));
+
+  Future<void> deleteWaterLog(int id) =>
+      (delete(waterLogs)..where((w) => w.id.equals(id))).go();
+
+  /// Drinks logged from the start of [from]'s day onwards, oldest first.
+  Stream<List<WaterLogRow>> watchWaterSince(DateTime from) =>
+      (select(waterLogs)
+            ..where((w) => w.loggedAt.isBiggerOrEqualValue(startOfDay(from)))
+            ..orderBy([(w) => OrderingTerm.asc(w.loggedAt)]))
+          .watch();
+
+  // ── Food ───────────────────────────────────────────────────────────────────
+
+  /// Saved foods, the most recently eaten first, then never-eaten ones by
+  /// name — so the usual breakfast is at the top in the morning.
+  Stream<List<FoodRow>> watchFoods() {
+    final lastEaten = foodLogs.loggedAt.max();
+    final query =
+        select(
+            foods,
+          ).join([leftOuterJoin(foodLogs, foodLogs.foodId.equalsExp(foods.id))])
+          ..groupBy([foods.id])
+          ..addColumns([lastEaten])
+          ..orderBy([
+            OrderingTerm(
+              expression: lastEaten,
+              mode: OrderingMode.desc,
+              nulls: NullsOrder.last,
+            ),
+            OrderingTerm.asc(foods.name.lower()),
+          ]);
+    return query.watch().map(
+      (rows) => [for (final row in rows) row.readTable(foods)],
+    );
+  }
+
+  /// Creates a saved food ([id] null) or updates one. Logs already made from
+  /// it keep the numbers they were logged with.
+  Future<int> saveFood({
+    int? id,
+    required String name,
+    required String servingLabel,
+    required int kcal,
+    required int proteinTenths,
+    required int carbsTenths,
+    required int fatTenths,
+  }) async {
+    final row = FoodsCompanion(
+      name: Value(name.trim()),
+      servingLabel: Value(servingLabel.trim()),
+      kcal: Value(kcal),
+      proteinTenths: Value(proteinTenths),
+      carbsTenths: Value(carbsTenths),
+      fatTenths: Value(fatTenths),
+    );
+    if (id == null) return into(foods).insert(row);
+    await (update(foods)..where((f) => f.id.equals(id))).write(row);
+    return id;
+  }
+
+  Future<FoodRow?> foodById(int id) =>
+      (select(foods)..where((f) => f.id.equals(id))).getSingleOrNull();
+
+  /// Logs made from it keep their copy; only the saved food goes.
+  Future<void> deleteFood(int id) =>
+      (delete(foods)..where((f) => f.id.equals(id))).go();
+
+  Future<int> logFood(
+    FoodRow food, {
+    required int servingsHundredths,
+    required DateTime day,
+    required Meal meal,
+    DateTime? at,
+  }) {
+    int scale(int perServing) =>
+        (perServing * servingsHundredths / 100).round();
+    return into(foodLogs).insert(
+      FoodLogsCompanion.insert(
+        day: dayKey(day),
+        meal: meal,
+        loggedAt: at ?? DateTime.now(),
+        foodId: Value(food.id),
+        name: food.name,
+        servingLabel: Value(food.servingLabel),
+        servingsHundredths: Value(servingsHundredths),
+        kcal: scale(food.kcal),
+        proteinTenths: Value(scale(food.proteinTenths)),
+        carbsTenths: Value(scale(food.carbsTenths)),
+        fatTenths: Value(scale(food.fatTenths)),
+      ),
+    );
+  }
+
+  /// Calories (and macros, if known) without a saved food.
+  Future<int> quickAddFood({
+    required DateTime day,
+    required Meal meal,
+    required int kcal,
+    String? name,
+    int proteinTenths = 0,
+    int carbsTenths = 0,
+    int fatTenths = 0,
+    DateTime? at,
+  }) => into(foodLogs).insert(
+    FoodLogsCompanion.insert(
+      day: dayKey(day),
+      meal: meal,
+      loggedAt: at ?? DateTime.now(),
+      name: (name == null || name.trim().isEmpty) ? 'Quick add' : name.trim(),
+      kcal: kcal,
+      proteinTenths: Value(proteinTenths),
+      carbsTenths: Value(carbsTenths),
+      fatTenths: Value(fatTenths),
+    ),
+  );
+
+  /// Changes how much was eaten, scaling the log's own numbers — so it works
+  /// even after the saved food was edited or deleted — and/or its meal.
+  Future<void> updateFoodLog(
+    FoodLogRow log, {
+    int? servingsHundredths,
+    Meal? meal,
+  }) {
+    final from = log.servingsHundredths;
+    final to = servingsHundredths;
+    final rescale = from != null && from > 0 && to != null && to != from;
+    int scale(int total) => (total * to! / from!).round();
+    return (update(foodLogs)..where((f) => f.id.equals(log.id))).write(
+      FoodLogsCompanion(
+        meal: meal == null ? const Value.absent() : Value(meal),
+        servingsHundredths: rescale ? Value(to) : const Value.absent(),
+        kcal: rescale ? Value(scale(log.kcal)) : const Value.absent(),
+        proteinTenths: rescale
+            ? Value(scale(log.proteinTenths))
+            : const Value.absent(),
+        carbsTenths: rescale
+            ? Value(scale(log.carbsTenths))
+            : const Value.absent(),
+        fatTenths: rescale ? Value(scale(log.fatTenths)) : const Value.absent(),
+      ),
+    );
+  }
+
+  Future<void> deleteFoodLog(int id) =>
+      (delete(foodLogs)..where((f) => f.id.equals(id))).go();
+
+  /// Everything eaten on [day], in the order it was logged.
+  Stream<List<FoodLogRow>> watchFoodLogs(DateTime day) =>
+      (select(foodLogs)
+            ..where((f) => f.day.equals(dayKey(day)))
+            ..orderBy([
+              (f) => OrderingTerm.asc(f.loggedAt),
+              (f) => OrderingTerm.asc(f.id),
+            ]))
+          .watch();
 
   // ── Steps ──────────────────────────────────────────────────────────────────
 

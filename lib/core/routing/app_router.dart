@@ -3,7 +3,11 @@ import 'package:go_router/go_router.dart';
 
 import '../../features/about/about_screen.dart';
 import '../../features/body/body_screen.dart';
+import '../../data/database.dart' show Meal;
 import '../../features/exercises/exercise_picker_screen.dart';
+import '../../features/food/food_picker_screen.dart';
+import '../../features/food/food_screen.dart';
+import '../../features/food/goals_screen.dart';
 import '../../features/routines/routine_editor_screen.dart';
 import '../../features/settings/settings_screen.dart';
 import '../../features/today/today_screen.dart';
@@ -32,6 +36,11 @@ final routerProvider = Provider<GoRouter>((ref) {
                 path: '/workouts',
                 builder: (_, _) => const WorkoutsScreen(),
               ),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(path: '/food', builder: (_, _) => const FoodScreen()),
             ],
           ),
           StatefulShellBranch(
@@ -77,6 +86,14 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/exercises/pick',
         builder: (_, _) => const ExercisePickerScreen(),
       ),
+      GoRoute(
+        path: '/food/add/:day/:meal',
+        builder: (_, state) => FoodPickerScreen(
+          day: DateTime.parse(state.pathParameters['day']!),
+          meal: Meal.values.byName(state.pathParameters['meal']!),
+        ),
+      ),
+      GoRoute(path: '/settings/goals', builder: (_, _) => const GoalsScreen()),
       GoRoute(path: '/about', builder: (_, _) => const AboutScreen()),
     ],
   );

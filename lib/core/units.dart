@@ -102,6 +102,37 @@ String formatHeight(int mm, UnitSystem units) {
 int heightFromFeetInches(int feet, int inches) =>
     ((feet * 12 + inches) * mmPerInch).round();
 
+// ── Volume ───────────────────────────────────────────────────────────────────
+
+const mlPerFluidOunce = 29.5735;
+
+/// `250 ml`, `1.5 L`, or `8.5 fl oz`. Water is always stored in whole ml.
+String formatVolume(int ml, UnitSystem units) {
+  if (units == UnitSystem.imperial) {
+    return '${_plain1.format(ml / mlPerFluidOunce)} fl oz';
+  }
+  if (ml >= 1000) return '${_plain2.format(ml / 1000)} L';
+  return '$ml ml';
+}
+
+String volumeUnit(UnitSystem units) =>
+    units == UnitSystem.metric ? 'ml' : 'fl oz';
+
+/// ml from a number typed in [volumeUnit].
+int? parseVolume(String input, UnitSystem units) {
+  final value = _parseNumber(input);
+  if (value == null || value <= 0) return null;
+  return switch (units) {
+    UnitSystem.metric => value.round(),
+    UnitSystem.imperial => (value * mlPerFluidOunce).round(),
+  };
+}
+
+String volumeInputText(int ml, UnitSystem units) => switch (units) {
+  UnitSystem.metric => '$ml',
+  UnitSystem.imperial => _plain1.format(ml / mlPerFluidOunce),
+};
+
 // ── Percent ──────────────────────────────────────────────────────────────────
 
 /// Percentages are stored in tenths: `185` is 18.5 %.

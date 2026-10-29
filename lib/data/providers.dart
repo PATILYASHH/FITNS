@@ -159,3 +159,52 @@ final restAlertsProvider = Provider<RestAlerts>((ref) => const RestAlerts());
 final restAlertStatusProvider = FutureProvider.autoDispose<RestAlertStatus>(
   (ref) => ref.watch(restAlertsProvider).status(),
 );
+
+// ── Food & water ────────────────────────────────────────────────────────────
+
+/// The day the Food tab shows. Follows "today" until the user moves it.
+final foodDayProvider = StateProvider<DateTime>(
+  (ref) => ref.watch(todayProvider),
+);
+
+final foodLogsProvider = StreamProvider.family<List<FoodLogRow>, DateTime>(
+  (ref, day) => ref.watch(dbProvider).watchFoodLogs(day),
+);
+
+final foodsProvider = StreamProvider<List<FoodRow>>(
+  (ref) => ref.watch(dbProvider).watchFoods(),
+);
+
+/// Each of the 7 days ending on [end] with its drinks, oldest first.
+final waterWeekProvider =
+    StreamProvider.family<
+      List<({DateTime day, List<WaterLogRow> logs})>,
+      DateTime
+    >((ref, end) {
+      final from = end.subtract(const Duration(days: 6));
+      return ref.watch(dbProvider).watchWaterSince(from).map((rows) {
+        return [
+          for (var i = 0; i < 7; i++)
+            (
+              day: from.add(Duration(days: i)),
+              logs: [
+                for (final w in rows)
+                  if (isSameDay(w.loggedAt, from.add(Duration(days: i)))) w,
+              ],
+            ),
+        ];
+      });
+    });
+
+/// The quick-add sizes from settings, in ml.
+final waterPresetsProvider = Provider<List<int>>((ref) {
+  final raw =
+      ref.watch(
+        settingsProvider.select((s) => s.valueOrNull?.waterPresetsMl),
+      ) ??
+      '250,500,750';
+  return [
+    for (final part in raw.split(','))
+      if (int.tryParse(part.trim()) case final ml? when ml > 0) ml,
+  ];
+});

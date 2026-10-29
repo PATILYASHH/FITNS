@@ -57,8 +57,8 @@ Future<void> restoreBackup(BuildContext context, WidgetRef ref) async {
     message:
         'Made ${DateFormat('d MMM yyyy, h:mm a').format(backup.exportedAt)}: '
         '${backup.workouts} workouts, ${backup.routines} routines, '
-        '${backup.bodyEntries} body entries, ${backup.stepDays} days of '
-        'steps.\n\nEverything in FITNS now — including a workout in '
+        '${backup.bodyEntries} body entries, ${backup.foodLogs} foods '
+        'logged, ${backup.stepDays} days of steps.\n\nEverything in FITNS now — including a workout in '
         'progress — is replaced by it.',
     action: 'Restore',
     destructive: true,

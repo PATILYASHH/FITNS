@@ -102,7 +102,7 @@ class WorkoutDetailScreen extends ConsumerWidget {
                     Expanded(
                       child: StatTile(
                         label: 'Volume',
-                        value: formatVolume(detail.volumeGrams, units),
+                        value: formatLiftVolume(detail.volumeGrams, units),
                       ),
                     ),
                   ],

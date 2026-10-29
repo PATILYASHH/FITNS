@@ -29,6 +29,9 @@ class BackupPreview {
   int get routines => _count('routines');
   int get bodyEntries => _count('bodyEntries');
   int get stepDays => _count('dailySteps');
+
+  /// Zero for a backup from before food tracking.
+  int get foodLogs => (_data['foodLogs'] as List?)?.length ?? 0;
 }
 
 /// Everything in FITNS as one JSON file, and back.
@@ -42,9 +45,13 @@ class BackupService {
 
   final AppDatabase _db;
 
-  /// Bump when a change would make an older FITNS misread a backup. Older
-  /// formats must stay readable.
-  static const formatVersion = 1;
+  /// Bump when an older FITNS would misread a backup — it then refuses it
+  /// instead of silently dropping what it doesn't know. Older formats must
+  /// stay readable.
+  ///
+  /// 2 (0.0.3): adds waterLogs, foods, foodLogs and the food & water
+  /// settings.
+  static const formatVersion = 2;
 
   static String fileName(DateTime now) =>
       'fitns-backup-${now.year}-${_two(now.month)}-${_two(now.day)}.json';
@@ -72,10 +79,14 @@ class BackupService {
       'workoutSets': await all(db.workoutSets),
       'bodyEntries': await all(db.bodyEntries),
       'dailySteps': await all(db.dailySteps),
+      'waterLogs': await all(db.waterLogs),
+      'foods': await all(db.foods),
+      'foodLogs': await all(db.foodLogs),
     };
     return const JsonEncoder.withIndent(' ').convert(data);
   }
 
+  /// In every format since 1.
   static const _tables = [
     'exercises',
     'routines',
@@ -86,6 +97,9 @@ class BackupService {
     'bodyEntries',
     'dailySteps',
   ];
+
+  /// Added in format 2; an older backup simply has none.
+  static const _laterTables = ['waterLogs', 'foods', 'foodLogs'];
 
   /// Checks [text] is a FITNS backup this version can read.
   BackupPreview parse(String text) {
@@ -112,7 +126,8 @@ class BackupService {
     final exportedAt = DateTime.tryParse('${data['exportedAt']}');
     if (data['settings'] is! Map ||
         exportedAt == null ||
-        _tables.any((t) => data[t] is! List)) {
+        _tables.any((t) => data[t] is! List) ||
+        _laterTables.any((t) => data[t] != null && data[t] is! List)) {
       throw const BackupException('This backup is incomplete or damaged.');
     }
     return BackupPreview._(data, exportedAt.toLocal());
@@ -124,12 +139,21 @@ class BackupService {
     final db = _db;
     final data = backup._data;
     List<Map<String, Object?>> rows(String table) =>
-        (data[table]! as List).cast<Map<String, Object?>>();
+        ((data[table] ?? const []) as List).cast<Map<String, Object?>>();
 
     try {
       await db.transaction(() async {
+        // Settings an older backup doesn't know about keep this phone's
+        // values, rather than failing the restore.
+        final settings = {
+          ...(await db.getSettings()).toJson(),
+          ...data['settings']! as Map<String, Object?>,
+        };
         // Children before parents, for the foreign keys.
         for (final table in <TableInfo>[
+          db.foodLogs,
+          db.foods,
+          db.waterLogs,
           db.workoutSets,
           db.workoutExercises,
           db.workouts,
@@ -144,11 +168,7 @@ class BackupService {
           await db.delete(table).go();
         }
         // Parents before children.
-        await db
-            .into(db.settings)
-            .insert(
-              SettingRow.fromJson(data['settings']! as Map<String, Object?>),
-            );
+        await db.into(db.settings).insert(SettingRow.fromJson(settings));
         await db.batch((b) {
           b.insertAll(
             db.exercises,
@@ -176,6 +196,12 @@ class BackupService {
             db.dailySteps,
             rows('dailySteps').map(DailyStepRow.fromJson),
           );
+          b.insertAll(
+            db.waterLogs,
+            rows('waterLogs').map(WaterLogRow.fromJson),
+          );
+          b.insertAll(db.foods, rows('foods').map(FoodRow.fromJson));
+          b.insertAll(db.foodLogs, rows('foodLogs').map(FoodLogRow.fromJson));
         });
         // A backup from an older FITNS lacks any built-ins added since.
         await db.seedExerciseLibrary();

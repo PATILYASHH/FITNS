@@ -8,6 +8,8 @@ import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_page.dart';
 import '../../data/providers.dart';
 import '../body/body_screen.dart';
+import '../food/calories_card.dart';
+import '../food/water_card.dart';
 import '../steps/steps_card.dart';
 import '../workouts/workout_actions.dart';
 import '../workouts/workouts_screen.dart';
@@ -34,6 +36,10 @@ class TodayScreen extends ConsumerWidget {
         const StepsCard(),
         const SectionLabel('Workout'),
         const _WorkoutSection(),
+        const SectionLabel('Food'),
+        CaloriesCard(day: today, onTap: () => context.go('/food')),
+        const SizedBox(height: 12),
+        WaterCard(day: today),
         SectionLabel(
           'Body',
           trailing: hasWeight

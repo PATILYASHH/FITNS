@@ -358,10 +358,118 @@ void main() {
     await unmount(tester);
   });
 
+  testWidgets('water, quick add and a saved food on the Food tab', (
+    tester,
+  ) async {
+    final db = await pumpApp(tester);
+    await tester.tap(find.text('Food').last);
+    await settle(tester);
+
+    // Water: one tap per glass.
+    await tester.tap(find.widgetWithText(ActionChip, '250 ml').first);
+    await settle(tester);
+    expect(find.text('250 ml / 2 L'), findsOneWidget);
+
+    /// The Add button on a meal's own row.
+    Future<void> addTo(String meal) async {
+      final label = find.textContaining(meal);
+      await tester.scrollUntilVisible(label, 200);
+      await tester.tap(
+        find.descendant(
+          of: find.ancestor(of: label, matching: find.byType(Row)).first,
+          matching: find.text('Add'),
+        ),
+      );
+    }
+
+    // Quick add to breakfast.
+    await addTo('Breakfast');
+    await settle(tester);
+    await tester.tap(find.text('Quick add'));
+    await settle(tester);
+    await tester.enterText(find.widgetWithText(TextField, 'Calories'), '300');
+    await tester.tap(find.widgetWithText(FilledButton, 'Add to Breakfast'));
+    await settle(tester);
+    expect(find.text('Breakfast · 300 kcal'), findsOneWidget);
+
+    // A new saved food, logged as 2 servings at lunch.
+    await addTo('Lunch');
+    await settle(tester);
+    await tester.tap(find.text('New food').first);
+    await settle(tester);
+    await tester.enterText(find.widgetWithText(TextField, 'Name'), 'Roti');
+    await tester.enterText(find.widgetWithText(TextField, 'Calories'), '120');
+    await tester.enterText(find.widgetWithText(TextField, 'Protein'), '3');
+    await tester.tap(find.text('Save food'));
+    await settle(tester);
+    // Servings 1 → 2, half a serving per tap.
+    await tester.tap(find.widgetWithIcon(IconButton, Icons.add));
+    await tester.tap(find.widgetWithIcon(IconButton, Icons.add));
+    await settle(tester);
+    await tester.tap(find.widgetWithText(FilledButton, 'Add to Lunch'));
+    await settle(tester);
+
+    expect(find.text('Lunch · 240 kcal'), findsOneWidget);
+    await tester.scrollUntilVisible(find.text('Calories'), -200);
+    expect(
+      find.textContaining('540', findRichText: true),
+      findsOneWidget,
+    ); // the day's calories
+    final logs = await tester.runAsync(() => db.select(db.foodLogs).get());
+    expect(logs!.map((l) => l.kcal), [300, 240]);
+    expect(tester.takeException(), isNull);
+    await unmount(tester);
+  });
+
+  testWidgets('the calorie goal can be worked out from the profile', (
+    tester,
+  ) async {
+    final db = await pumpApp(
+      tester,
+      seed: (db) async {
+        await db.updateSettings(const SettingsCompanion(heightMm: Value(1750)));
+        await db.addBodyEntries(DateTime(2026, 10, 28), {
+          BodyMetric.weight: 70000,
+        });
+      },
+    );
+    await tester.tap(find.text('Food').last);
+    await settle(tester);
+    await tester.tap(find.text('Set a daily goal'));
+    await settle(tester);
+
+    final year = DateTime.now().year - 30;
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Year you were born'),
+      '$year',
+    );
+    await tester.tap(find.text('Male'));
+    await tester.tap(find.text('How active you are'));
+    await settle(tester);
+    await tester.tap(find.text('Exercise 3–5 days a week').last);
+    await settle(tester);
+    await tester.ensureVisible(find.text('Calculate'));
+    await tester.tap(find.text('Calculate'));
+    await settle(tester);
+    expect(find.textContaining('About 2556 kcal a day'), findsOneWidget);
+
+    await tester.tap(find.text('Save'));
+    await settle(tester);
+    expect(
+      find.textContaining('/ 2,556 kcal', findRichText: true),
+      findsOneWidget,
+    );
+    final settings = await tester.runAsync(db.getSettings);
+    expect(settings!.calorieGoal, 2556);
+    expect(settings.proteinGoalG, 160);
+    expect(tester.takeException(), isNull);
+    await unmount(tester);
+  });
+
   testWidgets('every tab renders without errors', (tester) async {
     await pumpApp(tester, steps: StepSensorStatus.denied);
     expect(find.text('Turn on step counting'), findsOneWidget);
-    for (final tab in ['Workouts', 'Body', 'Settings', 'Today']) {
+    for (final tab in ['Workouts', 'Food', 'Body', 'Settings', 'Today']) {
       await tester.tap(find.text(tab).last);
       await settle(tester);
     }

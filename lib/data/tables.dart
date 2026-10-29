@@ -113,6 +113,49 @@ enum BodyMetric {
       values.where((m) => m.quantity == BodyQuantity.length).toList();
 }
 
+enum Meal {
+  breakfast('Breakfast'),
+  lunch('Lunch'),
+  dinner('Dinner'),
+  snacks('Snacks');
+
+  const Meal(this.label);
+  final String label;
+
+  /// The meal a log made at [time] most likely belongs to.
+  static Meal at(DateTime time) {
+    final h = time.hour;
+    if (h >= 4 && h < 11) return Meal.breakfast;
+    if (h >= 11 && h < 16) return Meal.lunch;
+    if (h >= 18 && h < 23) return Meal.dinner;
+    return Meal.snacks;
+  }
+}
+
+/// Only for the calorie estimate — the Mifflin-St Jeor formula differs by
+/// sex. Never shown anywhere else.
+enum Sex {
+  male('Male'),
+  female('Female');
+
+  const Sex(this.label);
+  final String label;
+}
+
+enum ActivityLevel {
+  sedentary('Mostly sitting', 1.2),
+  light('Light exercise 1–3 days a week', 1.375),
+  moderate('Exercise 3–5 days a week', 1.55),
+  active('Hard exercise 6–7 days a week', 1.725),
+  veryActive('Physical job plus training', 1.9);
+
+  const ActivityLevel(this.label, this.factor);
+  final String label;
+
+  /// Multiplies resting energy into a day's total.
+  final double factor;
+}
+
 // ─── Tables ─────────────────────────────────────────────────────────────────
 
 /// One row, `id = 1`.
@@ -138,6 +181,26 @@ class Settings extends Table {
   /// Rest between sets when an exercise doesn't set its own. 0 = no timer.
   IntColumn get defaultRestSeconds =>
       integer().withDefault(const Constant(90))();
+
+  // ── Food & water (schema v4) ──────────────────────────────────────────────
+
+  IntColumn get waterGoalMl => integer().withDefault(const Constant(2000))();
+
+  /// The quick-add sizes, in ml, comma-separated: `250,500,750`.
+  TextColumn get waterPresetsMl =>
+      text().withDefault(const Constant('250,500,750'))();
+
+  /// Daily targets. Null = not set; the Food tab then just shows totals.
+  IntColumn get calorieGoal => integer().nullable()();
+  IntColumn get proteinGoalG => integer().nullable()();
+  IntColumn get carbsGoalG => integer().nullable()();
+  IntColumn get fatGoalG => integer().nullable()();
+
+  /// Only for calculating a calorie goal. Year, not date: age to the year is
+  /// all the formula needs.
+  IntColumn get birthYear => integer().nullable()();
+  TextColumn get sex => textEnum<Sex>().nullable()();
+  TextColumn get activityLevel => textEnum<ActivityLevel>().nullable()();
 
   @override
   Set<Column> get primaryKey => {id};
@@ -284,4 +347,66 @@ class DailySteps extends Table {
 
   @override
   Set<Column> get primaryKey => {day};
+}
+
+/// A drink of water. Schema v4.
+@DataClassName('WaterLogRow')
+class WaterLogs extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  DateTimeColumn get loggedAt => dateTime()();
+  IntColumn get ml => integer()();
+}
+
+/// A food the user saved to log again. Nutrition is per serving, in integer
+/// tenths of a gram for macros (`125` = 12.5 g) — never a float on disk.
+/// Schema v4.
+@DataClassName('FoodRow')
+class Foods extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  TextColumn get name => text().withLength(min: 1, max: 80)();
+
+  /// What one serving is: `1 bowl`, `2 rotis`, `100 g`.
+  TextColumn get servingLabel => text()
+      .withLength(min: 1, max: 40)
+      .withDefault(const Constant('1 serving'))();
+
+  IntColumn get kcal => integer()();
+  IntColumn get proteinTenths => integer().withDefault(const Constant(0))();
+  IntColumn get carbsTenths => integer().withDefault(const Constant(0))();
+  IntColumn get fatTenths => integer().withDefault(const Constant(0))();
+
+  DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
+}
+
+/// One thing eaten. Name and nutrition are copied in at logging time, so
+/// editing or deleting a saved food never rewrites what was already eaten.
+/// Schema v4.
+@DataClassName('FoodLogRow')
+@TableIndex(name: 'food_logs_day', columns: {#day})
+class FoodLogs extends Table {
+  IntColumn get id => integer().autoIncrement()();
+
+  /// A `dayKey` — the day it counts towards.
+  TextColumn get day => text().withLength(min: 10, max: 10)();
+  TextColumn get meal => textEnum<Meal>()();
+  DateTimeColumn get loggedAt => dateTime()();
+
+  /// The saved food it came from; null for a quick add or a deleted food.
+  IntColumn get foodId => integer().nullable().references(
+    Foods,
+    #id,
+    onDelete: KeyAction.setNull,
+  )();
+
+  TextColumn get name => text().withLength(min: 1, max: 80)();
+  TextColumn get servingLabel => text().nullable()();
+
+  /// How many servings, in hundredths: `150` = 1.5. Null for a quick add.
+  IntColumn get servingsHundredths => integer().nullable()();
+
+  /// Totals for this log, not per serving.
+  IntColumn get kcal => integer()();
+  IntColumn get proteinTenths => integer().withDefault(const Constant(0))();
+  IntColumn get carbsTenths => integer().withDefault(const Constant(0))();
+  IntColumn get fatTenths => integer().withDefault(const Constant(0))();
 }

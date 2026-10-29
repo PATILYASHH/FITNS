@@ -10,6 +10,15 @@ DateTime startOfDay(DateTime date) => DateTime(date.year, date.month, date.day);
 bool isSameDay(DateTime a, DateTime b) =>
     a.year == b.year && a.month == b.month && a.day == b.day;
 
+/// When something logged "on [day]" happened: now if [day] is today,
+/// otherwise this time of day on [day] — so a forgotten glass of water still
+/// sorts among that day's others.
+DateTime momentOn(DateTime day, {DateTime? now}) {
+  final n = now ?? DateTime.now();
+  if (isSameDay(day, n)) return n;
+  return DateTime(day.year, day.month, day.day, n.hour, n.minute, n.second);
+}
+
 /// `Today`, `Yesterday`, `Mon, 26 Oct`, or `26 Oct 2025` for another year.
 String relativeDay(DateTime date, {DateTime? now}) {
   final today = startOfDay(now ?? DateTime.now());

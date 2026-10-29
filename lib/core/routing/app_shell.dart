@@ -7,7 +7,7 @@ import '../dates.dart';
 import '../theme/app_theme.dart';
 import '../widgets/app_page.dart';
 
-/// The four tabs, plus a "workout in progress" strip above them whenever
+/// The five tabs, plus a "workout in progress" strip above them whenever
 /// one is running — so it is never more than a tap away.
 class AppShell extends StatelessWidget {
   const AppShell({super.key, required this.shell});
@@ -37,6 +37,11 @@ class AppShell extends StatelessWidget {
                 icon: Icon(Icons.fitness_center_outlined),
                 selectedIcon: Icon(Icons.fitness_center),
                 label: 'Workouts',
+              ),
+              NavigationDestination(
+                icon: Icon(Icons.restaurant_outlined),
+                selectedIcon: Icon(Icons.restaurant),
+                label: 'Food',
               ),
               NavigationDestination(
                 icon: Icon(Icons.monitor_weight_outlined),

@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.0.3 — 2026-10-29
+
+- **Food tab** — log what you eat by meal (breakfast, lunch, dinner,
+  snacks) with calories, protein, carbs and fat. Move between days to fill
+  in one you missed.
+- **Saved foods** — save the foods you eat often with their serving and
+  macros, then log them in one tap (or pick 0.5, 1.5, 2 servings). Editing
+  or deleting a saved food never changes what you already logged.
+- **Quick add** — log just the calories when you don't know the rest.
+- **Daily goals** — calorie and macro targets, typed in or worked out from
+  your weight, height, age and activity (Mifflin-St Jeor).
+- **Water** — a daily goal, one-tap glass sizes you choose, undo, and the
+  last 7 days. On Today and the Food tab.
+- Backups now include food and water. Older backups still restore.
+
 ## 0.0.2 — 2026-10-29
 
 - **Exercise icons** — every exercise shows an icon for its kind of movement

@@ -58,6 +58,27 @@ void main() {
       BodyMetric.weight: 72500,
       BodyMetric.waist: 815,
     });
+    await db.updateSettings(
+      const SettingsCompanion(
+        calorieGoal: Value(2200),
+        waterGoalMl: Value(3000),
+      ),
+    );
+    await db.addWater(500, at: DateTime(2026, 10, 28, 9));
+    final rice = await db.saveFood(
+      name: 'Rice',
+      servingLabel: '1 cup',
+      kcal: 200,
+      proteinTenths: 40,
+      carbsTenths: 450,
+      fatTenths: 4,
+    );
+    await db.logFood(
+      (await db.foodById(rice))!,
+      servingsHundredths: 200,
+      day: DateTime(2026, 10, 28),
+      meal: Meal.lunch,
+    );
     await db.recordStepCounter(
       counter: 100,
       bootTime: DateTime(2026, 10, 1),
@@ -103,6 +124,17 @@ void main() {
       await target.watchExercises().first,
       hasLength(seedExercises.length + 1),
     );
+    expect(settings.calorieGoal, 2200);
+    expect(settings.waterGoalMl, 3000);
+    expect(
+      (await target.watchWaterSince(DateTime(2026, 10, 28)).first).single.ml,
+      500,
+    );
+    final eaten =
+        (await target.watchFoodLogs(DateTime(2026, 10, 28)).first).single;
+    expect(eaten.kcal, 400);
+    expect((await target.watchFoods().first).single.name, 'Rice');
+    expect(backup.foodLogs, 1);
     // The counter belongs to the old phone.
     expect(await target.select(target.stepWatermarks).get(), isEmpty);
   });
@@ -178,5 +210,41 @@ void main() {
       throwsA(isA<BackupException>()),
     );
     expect(await target.watchBodyEntries().first, hasLength(1));
+  });
+
+  test('a 0.0.2 backup (format 1, no food) still restores', () async {
+    await fill(source);
+    final data =
+        jsonDecode(await BackupService(source).export())
+            as Map<String, Object?>;
+    // What 0.0.2 wrote: no food tables, none of the newer settings.
+    data['formatVersion'] = 1;
+    for (final key in ['waterLogs', 'foods', 'foodLogs']) {
+      data.remove(key);
+    }
+    final settings = data['settings']! as Map<String, Object?>;
+    for (final key in [
+      'waterGoalMl',
+      'waterPresetsMl',
+      'calorieGoal',
+      'proteinGoalG',
+      'carbsGoalG',
+      'fatGoalG',
+      'birthYear',
+      'sex',
+      'activityLevel',
+    ]) {
+      settings.remove(key);
+    }
+
+    final service = BackupService(target);
+    final backup = service.parse(jsonEncode(data));
+    expect(backup.foodLogs, 0);
+    await service.restore(backup);
+
+    expect(await target.watchWorkoutHistory().first, hasLength(1));
+    final restored = await target.getSettings();
+    expect(restored.heightMm, 1750); // from the backup
+    expect(restored.waterGoalMl, 2000); // not in it: this phone's value
   });
 }

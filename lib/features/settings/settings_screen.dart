@@ -26,6 +26,7 @@ class SettingsScreen extends ConsumerWidget {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
     final db = ref.read(dbProvider);
+    final units = settings.unitSystem;
     final stepStatus = ref.watch(stepStatusProvider);
 
     Future<void> save(SettingsCompanion changes) => db.updateSettings(changes);
@@ -142,6 +143,74 @@ class SettingsScreen extends ConsumerWidget {
                   if (seconds == null) return;
                   await save(
                     SettingsCompanion(defaultRestSeconds: Value(seconds)),
+                  );
+                },
+              ),
+            ],
+          ),
+        ),
+        const SectionLabel('Food & water'),
+        Card(
+          child: Column(
+            children: [
+              ListTile(
+                leading: const Icon(Icons.flag_outlined),
+                title: const Text('Daily calorie & macro goals'),
+                subtitle: Text(
+                  settings.calorieGoal == null
+                      ? 'Not set'
+                      : '${NumberFormat('#,##0').format(settings.calorieGoal)} kcal a day',
+                ),
+                onTap: () => context.push('/settings/goals'),
+              ),
+              ListTile(
+                leading: const Icon(Icons.water_drop_outlined),
+                title: const Text('Daily water goal'),
+                subtitle: Text(formatVolume(settings.waterGoalMl, units)),
+                onTap: () async {
+                  final text = await promptText(
+                    context,
+                    title: 'Daily water goal',
+                    initial: volumeInputText(settings.waterGoalMl, units),
+                    suffix: volumeUnit(units),
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                  );
+                  final ml = text == null ? null : parseVolume(text, units);
+                  if (ml == null || ml < 250 || ml > 10000) return;
+                  await save(SettingsCompanion(waterGoalMl: Value(ml)));
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.local_drink_outlined),
+                title: const Text('Glass sizes'),
+                subtitle: Text(
+                  ref
+                      .watch(waterPresetsProvider)
+                      .map((ml) => formatVolume(ml, units))
+                      .join(' · '),
+                ),
+                onTap: () async {
+                  final text = await promptText(
+                    context,
+                    title: 'Glass sizes (${volumeUnit(units)})',
+                    hint: 'Up to 4, separated by commas',
+                    initial: ref
+                        .read(waterPresetsProvider)
+                        .map((ml) => volumeInputText(ml, units))
+                        .join(', '),
+                  );
+                  if (text == null) return;
+                  final sizes = [
+                    for (final part in text.split(','))
+                      if (parseVolume(part, units) case final ml?
+                          when ml >= 10 && ml <= 5000)
+                        ml,
+                  ].take(4).toList();
+                  if (sizes.isEmpty) return;
+                  await save(
+                    SettingsCompanion(waterPresetsMl: Value(sizes.join(','))),
                   );
                 },
               ),

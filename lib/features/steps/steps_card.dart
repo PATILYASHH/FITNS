@@ -2,10 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
-import '../../core/dates.dart';
 import '../../core/steps/step_sensor.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_page.dart';
+import '../../core/widgets/week_bars.dart';
 import '../../data/providers.dart';
 
 final _count = NumberFormat('#,##0');
@@ -127,7 +127,11 @@ class StepsCard extends ConsumerWidget {
                 ),
                 if (week != null) ...[
                   const SizedBox(height: 20),
-                  _WeekBars(days: week, goal: goal),
+                  WeekBars(
+                    days: [for (final d in week) (day: d.day, value: d.steps)],
+                    goal: goal,
+                    describe: (v) => '${_count.format(v)} steps',
+                  ),
                 ],
                 if (!allDay) ...[
                   const SizedBox(height: 12),
@@ -144,59 +148,6 @@ class StepsCard extends ConsumerWidget {
           },
         ],
       ),
-    );
-  }
-}
-
-class _WeekBars extends StatelessWidget {
-  const _WeekBars({required this.days, required this.goal});
-
-  final List<({DateTime day, int steps})> days;
-  final int goal;
-
-  static const _height = 56.0;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final top = days.fold(goal, (m, d) => d.steps > m ? d.steps : m);
-    final today = DateTime.now();
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.end,
-      children: [
-        for (final d in days)
-          Expanded(
-            child: Tooltip(
-              message: '${_count.format(d.steps)} steps',
-              child: Column(
-                children: [
-                  Container(
-                    height: top <= 0
-                        ? 4
-                        : (_height * d.steps / top).clamp(4.0, _height),
-                    margin: const EdgeInsets.symmetric(horizontal: 6),
-                    decoration: BoxDecoration(
-                      color: d.steps >= goal
-                          ? theme.accent
-                          : theme.accent.withValues(alpha: 0.35),
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    DateFormat('E').format(d.day).substring(0, 1),
-                    style: theme.textTheme.labelSmall?.copyWith(
-                      color: isSameDay(d.day, today) ? null : theme.muted,
-                      fontWeight: isSameDay(d.day, today)
-                          ? FontWeight.w700
-                          : null,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-      ],
     );
   }
 }

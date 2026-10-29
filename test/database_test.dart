@@ -29,34 +29,72 @@ void main() {
     expect(await db.watchExercises().first, hasLength(seedExercises.length));
   });
 
-  test('a 0.0.1 database (schema 2) upgrades without losing data', () async {
+  /// A database file as an older FITNS left it: made current, then each
+  /// later version's changes undone, newest first.
+  Future<File> oldDatabase(int schema) async {
     final dir = Directory.systemTemp.createTempSync('fitns_migration');
     addTearDown(() => dir.deleteSync(recursive: true));
     final file = File('${dir.path}/fitns.db');
+    final db = AppDatabase(NativeDatabase(file));
+    await db.addBodyEntries(DateTime(2026, 10, 28), {BodyMetric.weight: 72500});
+    if (schema < 4) {
+      for (final table in ['food_logs', 'foods', 'water_logs']) {
+        await db.customStatement('DROP TABLE $table');
+      }
+      for (final column in [
+        'water_goal_ml',
+        'water_presets_ml',
+        'calorie_goal',
+        'protein_goal_g',
+        'carbs_goal_g',
+        'fat_goal_g',
+        'birth_year',
+        'sex',
+        'activity_level',
+      ]) {
+        await db.customStatement('ALTER TABLE settings DROP COLUMN $column');
+      }
+    }
+    if (schema < 3) {
+      await db.customStatement('ALTER TABLE exercises DROP COLUMN icon');
+    }
+    await db.customStatement('PRAGMA user_version = $schema');
+    await db.close();
+    return file;
+  }
 
-    // Make a current database, then turn it back into what 0.0.1 wrote.
-    var old = AppDatabase(NativeDatabase(file));
-    await old.addBodyEntries(DateTime(2026, 10, 28), {
-      BodyMetric.weight: 72500,
-    });
-    await old.customStatement('ALTER TABLE exercises DROP COLUMN icon');
-    await old.customStatement('PRAGMA user_version = 2');
-    await old.close();
+  for (final (schema, release) in [(2, '0.0.1'), (3, '0.0.2')]) {
+    test(
+      'a $release database (schema $schema) upgrades and keeps its data',
+      () async {
+        final upgraded = AppDatabase(NativeDatabase(await oldDatabase(schema)));
+        addTearDown(upgraded.close);
 
-    final upgraded = AppDatabase(NativeDatabase(file));
-    addTearDown(upgraded.close);
-    final exercises = await upgraded.watchExercises().first;
-    expect(exercises, hasLength(seedExercises.length));
-    expect(exercises.every((e) => e.icon == null), isTrue);
-    expect((await upgraded.watchBodyEntries().first).single.value, 72500);
-    await upgraded.addCustomExercise(
-      name: 'New',
-      muscle: MuscleGroup.core,
-      equipment: Equipment.other,
-      kind: ExerciseKind.reps,
-      icon: ExerciseIcon.core,
+        expect((await upgraded.watchBodyEntries().first).single.value, 72500);
+        expect(
+          await upgraded.watchExercises().first,
+          hasLength(seedExercises.length),
+        );
+        final settings = await upgraded.getSettings();
+        expect(settings.waterGoalMl, 2000);
+        expect(settings.calorieGoal, isNull);
+        // The new tables work.
+        await upgraded.addWater(250);
+        await upgraded.quickAddFood(
+          day: DateTime.now(),
+          meal: Meal.lunch,
+          kcal: 400,
+        );
+        await upgraded.addCustomExercise(
+          name: 'New',
+          muscle: MuscleGroup.core,
+          equipment: Equipment.other,
+          kind: ExerciseKind.reps,
+          icon: ExerciseIcon.core,
+        );
+      },
     );
-  });
+  }
 
   test('settings are created with defaults on first read', () async {
     final s = await db.getSettings();

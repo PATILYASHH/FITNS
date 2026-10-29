@@ -146,7 +146,7 @@ class WorkoutSummaryCard extends StatelessWidget {
     final details = [
       formatDuration(duration),
       '${summary.setCount} ${summary.setCount == 1 ? 'set' : 'sets'}',
-      if (summary.volumeGrams > 0) formatVolume(summary.volumeGrams, units),
+      if (summary.volumeGrams > 0) formatLiftVolume(summary.volumeGrams, units),
     ].join(' · ');
     return SectionCard(
       onTap: () => context.push('/workout/${w.id}'),
